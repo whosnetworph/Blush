@@ -789,14 +789,32 @@ end
 
 local function MakeCollapse(content, inner, startOpen, onToggle)
 	local Col = { Open = startOpen ~= false }
-	local function target() return Col.Open and inner.AbsoluteSize.Y or 0 end
-	function Col:Refresh() content.Size = UDim2.new(1, 0, 0, target()) end
+	local function target() return Col.Open and math.max(0, inner.AbsoluteSize.Y) or 0 end
+	function Col:Refresh()
+		content.Size = UDim2.new(1, 0, 0, target())
+	end
 	function Col:Set(open, animate)
 		Col.Open = open
-		if animate then Tween(content, { Size = UDim2.new(1, 0, 0, target()) }, .35) else Col:Refresh() end
+		local h = target()
+		if animate then
+			Tween(content, { Size = UDim2.new(1, 0, 0, h) }, .3)
+			-- Keep parent scroll canvas in sync while collapsing/expanding
+			task.spawn(function()
+				local tab = Col._Tab
+				for _ = 1, 12 do
+					task.wait(0.03)
+					if tab and tab._UpdateCanvas then tab._UpdateCanvas() end
+				end
+				if tab and tab._UpdateCanvas then tab._UpdateCanvas() end
+			end)
+		else
+			Col:Refresh()
+		end
 		if onToggle then onToggle(open) end
 	end
-	inner:GetPropertyChangedSignal("AbsoluteSize"):Connect(function() if Col.Open then Col:Refresh() end end)
+	inner:GetPropertyChangedSignal("AbsoluteSize"):Connect(function()
+		if Col.Open then Col:Refresh() end
+	end)
 	Col:Refresh()
 	return Col
 end
@@ -1546,6 +1564,7 @@ function Container:AddFold(o)
 	local fold = setmetatable({ Inner = inner, Window = self.Window, Section = self.Section, Tab = self.Tab }, Container)
 	local open = o.Open ~= false
 	fold.Collapse = MakeCollapse(content, inner, open, function(v) Tween(arrow, { Rotation = v and 0 or -90 }, .25) end)
+	fold.Collapse._Tab = self.Tab or self.Window and self.Window.ActiveTab
 	arrow.Rotation = open and 0 or -90
 	head.MouseButton1Click:Connect(function() fold.Collapse:Set(not fold.Collapse.Open, true) end)
 	return fold
@@ -1592,6 +1611,7 @@ function TabMethods:AddSection(o)
 	List(inner, 9) Pad(inner, named and 10 or 2, 14, 14, 14)
 	S.Frame, S.Wrap, S.Inner = frame, wrap, inner
 	S.Collapse = MakeCollapse(content, inner, o.Open ~= false, function(v) if arrow then Tween(arrow, { Rotation = v and 0 or -90 }, .25) end end)
+	S.Collapse._Tab = self
 	if arrow and o.Open == false then arrow.Rotation = -90 end
 	if named and o.Collapsible ~= false then
 		title.MouseButton1Click:Connect(function() S.Collapse:Set(not S.Collapse.Open, true) end)
@@ -1619,6 +1639,7 @@ function TabMethods:Select()
 	self.Page.Position = UDim2.fromOffset(18 * dir, 0)
 	Tween(self.Page, { GroupTransparency = 0, Position = UDim2.fromOffset(0, 0) }, .4)
 	for _, s in ipairs(self.Sections) do s.Collapse:Refresh() end
+	if self._UpdateCanvas then task.defer(self._UpdateCanvas) end
 	w:_MoveIndicator(self, prev == nil)
 end
 
@@ -1751,9 +1772,22 @@ function Window:AddTab(o)
 	btn.MouseButton1Click:Connect(function() Tab:Select() end)
 
 	local page = Make("CanvasGroup", { BackgroundTransparency = 1, BorderSizePixel = 0, Size = UDim2.fromScale(1, 1), Visible = false, GroupTransparency = 1, Parent = self.Body })
-	local scroll = Make("ScrollingFrame", { BackgroundTransparency = 1, BorderSizePixel = 0, Size = UDim2.fromScale(1, 1), ScrollBarThickness = 0,
-		ScrollBarImageTransparency = 1, AutomaticCanvasSize = Enum.AutomaticSize.Y, CanvasSize = UDim2.new(), ScrollingDirection = Enum.ScrollingDirection.Y, Parent = page })
-	List(scroll, 12) Pad(scroll, 14, 14, 14, 14)
+	local scroll = Make("ScrollingFrame", {
+		BackgroundTransparency = 1,
+		BorderSizePixel = 0,
+		Size = UDim2.fromScale(1, 1),
+		ScrollBarThickness = 3,
+		ScrollBarImageColor3 = Theme.Stroke,
+		ScrollBarImageTransparency = .35,
+		AutomaticCanvasSize = Enum.AutomaticSize.None,
+		CanvasSize = UDim2.new(),
+		ScrollingDirection = Enum.ScrollingDirection.Y,
+		ElasticBehavior = Enum.ElasticBehavior.Never,
+		Parent = page,
+	})
+	local padTop, padBot, padSide = 14, 20, 14
+	local scrollList = List(scroll, 12)
+	Pad(scroll, padTop, padBot, padSide, padSide)
 	Tab.Top = Frame({ Size = UDim2.new(1, 0, 0, 0), AutomaticSize = Enum.AutomaticSize.Y, LayoutOrder = 1, Parent = scroll })
 	List(Tab.Top, 12)
 	local cols = Frame({ Size = UDim2.new(1, 0, 0, 0), AutomaticSize = Enum.AutomaticSize.Y, LayoutOrder = 2, Parent = scroll })
@@ -1762,6 +1796,27 @@ function Window:AddTab(o)
 	Tab.Right = Frame({ Size = UDim2.new(.5, -6, 0, 0), AutomaticSize = Enum.AutomaticSize.Y, LayoutOrder = 2, Parent = cols })
 	List(Tab.Left, 12) List(Tab.Right, 12)
 	Tab.Page = page
+	Tab.Scroll = scroll
+
+	-- Manual canvas size so content is never cut off and you can't scroll past the end
+	local function updateCanvas()
+		local h = scrollList.AbsoluteContentSize.Y + padTop + padBot
+		local view = scroll.AbsoluteWindowSize.Y
+		if view <= 0 then return end
+		-- Canvas height is content height; if content fits, keep canvas at viewport so no extra scroll
+		local canvasH = math.max(h, view)
+		scroll.CanvasSize = UDim2.new(0, 0, 0, canvasH)
+		-- Clamp position if we shrank (e.g. section collapsed)
+		local maxY = math.max(0, canvasH - view)
+		if scroll.CanvasPosition.Y > maxY then
+			scroll.CanvasPosition = Vector2.new(0, maxY)
+		end
+	end
+	scrollList:GetPropertyChangedSignal("AbsoluteContentSize"):Connect(updateCanvas)
+	scroll:GetPropertyChangedSignal("AbsoluteWindowSize"):Connect(updateCanvas)
+	Tab._UpdateCanvas = updateCanvas
+	task.defer(updateCanvas)
+
 	table.insert(self.Tabs, Tab)
 	if #self.Tabs == 1 then Tab:Select() end
 	return Tab
@@ -1775,11 +1830,6 @@ function Window:CreateSettingsTab()
 	menu:AddToggle({ Name = "Watermark", Default = true, Callback = function(v) Blush:SetWatermark(v) end })
 	menu:AddToggle({ Name = "Keybind list", Default = false, Callback = function(v) Blush:SetBindList(v) end })
 	menu:AddToggle({ Name = "Notifications", Default = true, Callback = function(v) Blush.Notifications = v end })
-	local fold = menu:AddFold({ Name = "Accent colours" })
-	local c1 = fold:AddColorpicker({ Name = "Primary", Default = Theme.Accent })
-	local c2 = fold:AddColorpicker({ Name = "Secondary", Default = Theme.Accent2 })
-	local function upd() Blush:SetAccent(c1.Value, c2.Value) end
-	c1:OnChanged(upd) c2:OnChanged(upd)
 	menu:AddButton({ Name = "Unload", Callback = function() Blush:Unload() end })
 
 	local cfg = tab:AddSection({ Name = "Configs", Side = "Right" })
