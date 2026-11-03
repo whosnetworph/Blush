@@ -571,7 +571,7 @@ function Blush:_BuildHUD()
 	local wm = Frame({
 		Name = "Watermark",
 		Position = UDim2.fromOffset(16, 16),
-		Size = UDim2.fromOffset(0, 34),
+		Size = UDim2.fromOffset(0, 38),
 		AutomaticSize = Enum.AutomaticSize.X,
 		BackgroundColor3 = Theme.Panel,
 		ClipsDescendants = true,
@@ -579,12 +579,12 @@ function Blush:_BuildHUD()
 	})
 	Corner(wm, 8)
 	Stroke(wm, Theme.Stroke, 1, .4)
-	-- Full-width curved accent (clipped by parent corner)
+	-- Engraved full-width purple bar
 	EngravedLine(wm, 2)
-	local row = Frame({ Size = UDim2.fromOffset(0, 34), AutomaticSize = Enum.AutomaticSize.X, Parent = wm })
-	local rl = List(row, 9, Enum.FillDirection.Horizontal)
+	local row = Frame({ Size = UDim2.fromOffset(0, 38), AutomaticSize = Enum.AutomaticSize.X, Parent = wm })
+	local rl = List(row, 10, Enum.FillDirection.Horizontal)
 	rl.VerticalAlignment = Enum.VerticalAlignment.Center
-	Pad(row, 4, 0, 14, 14)
+	Pad(row, 4, 0, 16, 16)
 
 	local order = 0
 	local function seg(text, bold)
@@ -592,9 +592,9 @@ function Blush:_BuildHUD()
 		return Label({
 			Text = text,
 			FontFace = bold and Fonts.Bold or Fonts.Medium,
-			TextSize = bold and 13 or 12,
+			TextSize = bold and 14 or 13,
 			TextColor3 = bold and WHITE or Theme.Text,
-			Size = UDim2.fromOffset(0, 24),
+			Size = UDim2.fromOffset(0, 26),
 			AutomaticSize = Enum.AutomaticSize.X,
 			LayoutOrder = order,
 			Parent = row,
@@ -603,9 +603,9 @@ function Blush:_BuildHUD()
 	local function sep()
 		order += 1
 		Frame({
-			Size = UDim2.fromOffset(1, 12),
+			Size = UDim2.fromOffset(1, 14),
 			BackgroundColor3 = Theme.Stroke,
-			BackgroundTransparency = .25,
+			BackgroundTransparency = .2,
 			LayoutOrder = order,
 			Parent = row,
 		})
@@ -621,7 +621,31 @@ function Blush:_BuildHUD()
 	sep()
 	local timeLbl = seg("00:00")
 	self.WatermarkFrame, self.WatermarkTitle = wm, title
+	self.WatermarkName = nameLbl
+	self.HideIdentity = false
 	Draggable(wm, wm, true)
+
+	local function maskName(s)
+		s = tostring(s or "")
+		if #s <= 2 then return s .. "****" end
+		return s:sub(1, 2) .. string.rep("*", math.max(4, #s - 2))
+	end
+	function Blush:SetHideIdentity(b)
+		self:_Init()
+		self.HideIdentity = b and true or false
+		local name = Players.LocalPlayer and Players.LocalPlayer.Name or "player"
+		if self.WatermarkName then
+			self.WatermarkName.Text = self.HideIdentity and maskName(name) or name
+		end
+		if self.FooterUser then
+			local dn = Players.LocalPlayer and Players.LocalPlayer.DisplayName or name
+			if self.HideIdentity then
+				self.FooterUser.Text = string.format("%s <font color=\"rgb(120,127,146)\">/ %s</font>", maskName(name), maskName(dn))
+			else
+				self.FooterUser.Text = string.format("%s <font color=\"rgb(120,127,146)\">/ %s</font>", name, dn)
+			end
+		end
+	end
 
 	local frames, acc, fps, ping = 0, 0, 60, 0
 	local function refresh()
@@ -770,92 +794,92 @@ function Blush:Notify(o)
 	if type(o) == "string" then o = { Content = o } end
 	o = o or {}
 	local title, content, dur = o.Title or "Blush", o.Content or o.Text or "", o.Duration or 4
+
+	-- Fixed-height card — avoid AutomaticSize + full-scale children (caused full-screen notif bug)
+	local hasBody = content ~= ""
+	local h = hasBody and 64 or 44
 	local wrap = Frame({
-		Size = UDim2.new(1, 0, 0, 0),
-		AutomaticSize = Enum.AutomaticSize.Y,
-		ClipsDescendants = false,
+		Size = UDim2.new(1, 0, 0, h),
+		BackgroundTransparency = 1,
+		ClipsDescendants = true,
 		Parent = self.NotifHolder,
 	})
 	local card = Make("CanvasGroup", {
 		BorderSizePixel = 0,
 		BackgroundColor3 = Theme.Panel,
 		GroupTransparency = 1,
-		Position = UDim2.fromOffset(-360, 0),
-		Size = UDim2.new(1, 0, 0, 0),
-		AutomaticSize = Enum.AutomaticSize.Y,
+		Position = UDim2.fromOffset(-320, 0),
+		Size = UDim2.new(1, 0, 1, 0),
 		ClipsDescendants = true,
 		Parent = wrap,
 	})
 	Corner(card, 7)
 	Stroke(card, Theme.Stroke, 1, .4)
-	List(card, 0)
-	-- Always purple accent (Astral-style) — no green/yellow/red type colours
+	-- Engraved purple top bar
 	local top = Frame({
 		Size = UDim2.new(1, 0, 0, 2),
-		LayoutOrder = 1,
 		BackgroundColor3 = WHITE,
 		BorderSizePixel = 0,
 		Parent = card,
 	})
 	AccentGradient(top)
-	Create("Frame", {
+	Frame({
+		Position = UDim2.fromOffset(0, 2),
 		Size = UDim2.new(1, 0, 0, 1),
-		LayoutOrder = 2,
 		BackgroundColor3 = Color3.new(0, 0, 0),
 		BackgroundTransparency = .7,
 		BorderSizePixel = 0,
 		Parent = card,
 	})
-	local text = Frame({
-		Size = UDim2.new(1, 0, 0, 0),
-		AutomaticSize = Enum.AutomaticSize.Y,
-		LayoutOrder = 3,
-		Parent = card,
-	})
-	List(text, 3)
-	Pad(text, 10, 12, 16, 16)
 	Label({
 		Text = title,
 		FontFace = Fonts.Bold,
 		TextSize = 14,
-		Size = UDim2.new(1, 0, 0, 18),
-		LayoutOrder = 1,
-		Parent = text,
+		Position = UDim2.fromOffset(14, hasBody and 10 or 12),
+		Size = UDim2.new(1, -28, 0, 18),
+		Parent = card,
 	})
-	if content ~= "" then
+	if hasBody then
 		Label({
 			Text = content,
 			FontFace = Fonts.Medium,
 			TextSize = 12,
 			TextColor3 = Theme.SubText,
-			TextWrapped = true,
-			Size = UDim2.new(1, 0, 0, 0),
-			AutomaticSize = Enum.AutomaticSize.Y,
-			LayoutOrder = 2,
-			Parent = text,
+			TextTruncate = Enum.TextTruncate.AtEnd,
+			Position = UDim2.fromOffset(14, 30),
+			Size = UDim2.new(1, -28, 0, 16),
+			Parent = card,
 		})
 	end
-	local track = Frame({ Size = UDim2.new(1, 0, 0, 2), LayoutOrder = 4, Parent = card })
+	local track = Frame({
+		AnchorPoint = Vector2.new(0, 1),
+		Position = UDim2.new(0, 0, 1, 0),
+		Size = UDim2.new(1, 0, 0, 2),
+		Parent = card,
+	})
 	local fill = Frame({ Size = UDim2.fromScale(1, 1), BackgroundColor3 = WHITE, Parent = track })
 	AccentGradient(fill)
-	local click = Button({ Size = UDim2.fromScale(1, 1), ZIndex = 5, Parent = card })
+	local click = Button({
+		Size = UDim2.fromScale(1, 1),
+		BackgroundTransparency = 1,
+		ZIndex = 5,
+		Parent = card,
+	})
 
 	local closed = false
 	local function close()
 		if closed then return end
 		closed = true
-		Tween(card, { Position = UDim2.fromOffset(-360, 0), GroupTransparency = 1 }, .35, Enum.EasingStyle.Quint, Enum.EasingDirection.In)
-		task.wait(.28)
-		if not wrap.Parent then return end
-		wrap.ClipsDescendants = true
-		wrap.AutomaticSize = Enum.AutomaticSize.None
-		wrap.Size = UDim2.new(1, 0, 0, wrap.AbsoluteSize.Y)
-		Tween(wrap, { Size = UDim2.new(1, 0, 0, 0) }, .2)
-		task.wait(.22)
-		wrap:Destroy()
+		Tween(card, { Position = UDim2.fromOffset(-320, 0), GroupTransparency = 1 }, .3, Enum.EasingStyle.Quint, Enum.EasingDirection.In)
+		task.wait(.25)
+		if wrap.Parent then
+			Tween(wrap, { Size = UDim2.new(1, 0, 0, 0) }, .18)
+			task.wait(.2)
+			wrap:Destroy()
+		end
 	end
 	click.MouseButton1Click:Connect(close)
-	Tween(card, { Position = UDim2.fromOffset(0, 0), GroupTransparency = 0 }, .45, Back)
+	Tween(card, { Position = UDim2.fromOffset(0, 0), GroupTransparency = 0 }, .4, Back)
 	Tween(fill, { Size = UDim2.new(0, 0, 1, 0) }, dur, Linear)
 	task.delay(dur, close)
 end
@@ -1151,19 +1175,16 @@ function Container:AddToggle(o)
 	local fill = Frame({ Size = UDim2.fromScale(1, 1), BackgroundColor3 = WHITE, BackgroundTransparency = 1, Parent = box })
 	Corner(fill, 5)
 	AccentGradient(fill, 45)
-	-- Clean checkmark glyph (avoids awkward two-frame geometry)
-	local tick = Label({
-		Text = "✓",
-		FontFace = Fonts.Bold,
-		TextSize = 13,
-		TextColor3 = WHITE,
-		TextXAlignment = Enum.TextXAlignment.Center,
-		TextYAlignment = Enum.TextYAlignment.Center,
+	-- Simple generic tick — small solid square, no fancy glyph
+	local tick = Frame({
 		AnchorPoint = Vector2.new(.5, .5),
 		Position = UDim2.fromScale(.5, .5),
-		Size = UDim2.fromOffset(18, 18),
+		Size = UDim2.fromOffset(8, 8),
+		BackgroundColor3 = WHITE,
+		BackgroundTransparency = 1,
 		Parent = box,
 	})
+	Corner(tick, 2)
 	local tscale = Create("UIScale", { Scale = 0, Parent = tick })
 	local lbl = Label({
 		Text = o.Name or "",
@@ -1182,7 +1203,8 @@ function Container:AddToggle(o)
 		Tween(fill, { BackgroundTransparency = v and 0 or 1 }, .2)
 		Tween(bs, { Transparency = v and 1 or 0 }, .2)
 		Tween(lbl, { TextColor3 = v and Theme.Text or Theme.SubText }, .2)
-		Tween(tscale, { Scale = v and 1 or 0 }, v and .35 or .12, v and Back or Quint)
+		Tween(tick, { BackgroundTransparency = v and 0 or 1 }, .15)
+		Tween(tscale, { Scale = v and 1 or 0 }, v and .25 or .12, v and Back or Quint)
 		if self.Flag then Blush.Flags[self.Flag] = v end
 		if self.Keybind then self.Keybind:_Sync(v) end
 		if changed and not silent then self:_Fire(v) end
@@ -1206,10 +1228,30 @@ function Container:AddSlider(o)
 	local S = { Type = "Slider", Min = o.Min or 0, Max = o.Max or 100, Rounding = o.Rounding or 0 }
 	local row = Frame({ Size = UDim2.new(1, 0, 0, 38), Parent = self.Inner })
 	Label({ Text = o.Name or "", Size = UDim2.new(.6, 0, 0, 18), Parent = row })
-	local val = Button({ Text = "", TextSize = 12, FontFace = Fonts.Medium, TextColor3 = Theme.SubText, TextXAlignment = Enum.TextXAlignment.Right,
-		AnchorPoint = Vector2.new(1, 0), Position = UDim2.fromScale(1, 0), Size = UDim2.fromOffset(110, 18), Parent = row })
-	local edit = Input({ Visible = false, AnchorPoint = Vector2.new(1, 0), Position = UDim2.new(1, 0, 0, -1), Size = UDim2.fromOffset(70, 20),
-		BackgroundTransparency = 0, BackgroundColor3 = Theme.Element, TextSize = 12, TextXAlignment = Enum.TextXAlignment.Center, Parent = row })
+	-- Value label is tight to the text only — wide hit area was opening edit from far left
+	local val = Button({
+		Text = "",
+		TextSize = 12,
+		FontFace = Fonts.Medium,
+		TextColor3 = Theme.SubText,
+		TextXAlignment = Enum.TextXAlignment.Right,
+		AnchorPoint = Vector2.new(1, 0),
+		Position = UDim2.fromScale(1, 0),
+		Size = UDim2.fromOffset(56, 18),
+		AutomaticSize = Enum.AutomaticSize.X,
+		Parent = row,
+	})
+	local edit = Input({
+		Visible = false,
+		AnchorPoint = Vector2.new(1, 0),
+		Position = UDim2.new(1, 0, 0, -1),
+		Size = UDim2.fromOffset(56, 20),
+		BackgroundTransparency = 0,
+		BackgroundColor3 = Theme.Element,
+		TextSize = 12,
+		TextXAlignment = Enum.TextXAlignment.Center,
+		Parent = row,
+	})
 	Corner(edit, 4)
 	Stroke(edit, Theme.Stroke, 1)
 	local track = Frame({ Position = UDim2.fromOffset(0, 27), Size = UDim2.new(1, 0, 0, 4), BackgroundColor3 = Theme.Element, Parent = row })
@@ -1945,8 +1987,12 @@ function Window:CreateSettingsTab()
 	menu:AddKeybind({ Name = "Menu key", Default = self.Keybind, Mode = "Always", NoList = true, NoState = true, NoSave = true,
 		KeyChanged = function(k) self.Keybind = k end })
 	menu:AddToggle({ Name = "Watermark", Default = true, Callback = function(v) Blush:SetWatermark(v) end })
-	menu:AddToggle({ Name = "Keybind list", Default = false, Callback = function(v) Blush:SetBindList(v) end })
 	menu:AddToggle({ Name = "Notifications", Default = true, Callback = function(v) Blush.Notifications = v end })
+	menu:AddToggle({
+		Name = "Hide username",
+		Default = false,
+		Callback = function(v) Blush:SetHideIdentity(v) end,
+	})
 	menu:AddButton({ Name = "Unload", Callback = function() Blush:Unload() end })
 
 	local cfg = tab:AddSection({ Name = "Configs", Side = "Right" })
@@ -2080,35 +2126,49 @@ function Blush:CreateWindow(cfg)
 	local header = Frame({ Size = UDim2.new(1, 0, 0, HEADER_H), BackgroundColor3 = WHITE, ClipsDescendants = true, Parent = main })
 	AccentGradient(header, 0)
 	W.Header = header
-	-- Weaving white sheen lines across the purple header (Astral-style)
-	for si, conf in ipairs({
-		{ h = 3, rot = 18, t = 6.5, y = .25, delay = 0 },
-		{ h = 2, rot = -12, t = 9, y = .55, delay = 2.2 },
-	}) do
-		local sheen = Frame({
-			Size = UDim2.new(0, 140, 0, conf.h),
-			Position = UDim2.new(-.35, 0, conf.y, 0),
-			Rotation = conf.rot,
-			BackgroundColor3 = WHITE,
-			BackgroundTransparency = .15,
-			Parent = header,
-		})
-		Create("UIGradient", {
-			Transparency = NumberSequence.new({
-				NumberSequenceKeypoint.new(0, 1),
-				NumberSequenceKeypoint.new(.35, .55),
-				NumberSequenceKeypoint.new(.5, .35),
-				NumberSequenceKeypoint.new(.65, .55),
-				NumberSequenceKeypoint.new(1, 1),
-			}),
-			Parent = sheen,
-		})
-		task.delay(conf.delay, function()
-			TweenService:Create(sheen, TweenInfo.new(conf.t, Linear, Enum.EasingDirection.Out, -1), {
-				Position = UDim2.new(1.25, 0, conf.y, 0),
-			}):Play()
-		end)
-	end
+	-- One solid horizontal white line; wave is transparency-only (does not move)
+	local sheen = Frame({
+		AnchorPoint = Vector2.new(0, .5),
+		Position = UDim2.new(0, 0, .5, 0),
+		Size = UDim2.new(1, 0, 0, 2),
+		BackgroundColor3 = WHITE,
+		BackgroundTransparency = 0,
+		BorderSizePixel = 0,
+		Parent = header,
+	})
+	local sheenGrad = Create("UIGradient", {
+		Transparency = NumberSequence.new({
+			NumberSequenceKeypoint.new(0, 1),
+			NumberSequenceKeypoint.new(.25, .75),
+			NumberSequenceKeypoint.new(.5, .2),
+			NumberSequenceKeypoint.new(.75, .75),
+			NumberSequenceKeypoint.new(1, 1),
+		}),
+		Parent = sheen,
+	})
+	-- Animate gradient offset so the bright band waves along the line (keys always strictly increasing)
+	task.spawn(function()
+		local t0 = os.clock()
+		while sheen.Parent do
+			local t = (os.clock() - t0) * 0.5
+			local mid = 0.18 + (math.sin(t) * 0.5 + 0.5) * 0.64
+			local keys = { NumberSequenceKeypoint.new(0, 1) }
+			local function add(pos, tr)
+				pos = math.clamp(pos, 0.001, 0.999)
+				if pos > keys[#keys].Time + 0.001 then
+					table.insert(keys, NumberSequenceKeypoint.new(pos, tr))
+				end
+			end
+			add(mid - 0.22, .85)
+			add(mid - 0.1, .4)
+			add(mid, .08)
+			add(mid + 0.1, .4)
+			add(mid + 0.22, .85)
+			table.insert(keys, NumberSequenceKeypoint.new(1, 1))
+			sheenGrad.Transparency = NumberSequence.new(keys)
+			task.wait(0.03)
+		end
+	end)
 	local rng = Random.new(7)
 	for i = 1, 18 do
 		local star = Label({
@@ -2149,8 +2209,15 @@ function Blush:CreateWindow(cfg)
 	task.spawn(function()
 		pcall(function() avatar.Image = Players:GetUserThumbnailAsync(lp.UserId, Enum.ThumbnailType.HeadShot, Enum.ThumbnailSize.Size48x48) end)
 	end)
-	Label({ RichText = true, Position = UDim2.fromOffset(50, 0), Size = UDim2.new(.5, 0, 1, 0), TextSize = 14,
-		Text = string.format("%s <font color=\"rgb(120,127,146)\">/ %s</font>", lp.Name, lp.DisplayName), Parent = footer })
+	self.FooterUser = Label({
+		RichText = true,
+		Position = UDim2.fromOffset(50, 0),
+		Size = UDim2.new(.5, 0, 1, 0),
+		TextSize = 14,
+		Text = string.format("%s <font color=\"rgb(120,127,146)\">/ %s</font>", lp.Name, lp.DisplayName),
+		Parent = footer,
+	})
+	W.FooterUser = self.FooterUser
 
 	local sbtn = Button({ AnchorPoint = Vector2.new(1, .5), Position = UDim2.new(1, -12, .5, 0), Size = UDim2.fromOffset(30, 30), Parent = footer })
 	local sicon = Label({
