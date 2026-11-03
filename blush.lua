@@ -12,6 +12,14 @@ local Blush = {
 	MenuOpen = false, Notifications = true, Config = Config, IconProvider = nil, _BindMap = {},
 }
 
+-- Only one copy may run at a time: loading again unloads the previous one.
+do
+	local env = (typeof(getgenv) == "function" and getgenv()) or _G
+	local old = env.__BlushActive
+	if old and old ~= Blush and type(old.Unload) == "function" then pcall(function() old:Unload() end) end
+	env.__BlushActive = Blush
+end
+
 local Theme = {
 	Background = Color3.fromRGB(34, 38, 48),
 	Panel = Color3.fromRGB(39, 44, 56),
@@ -509,6 +517,16 @@ function Config:AutoLoad()
 	end
 	return ok
 end
+-- "Auto save loaded config" is remembered between sessions (separate from the configs themselves)
+function Config:GetAutoSavePref()
+	if not self:Ensure() then return false end
+	local p = self:Root() .. "/autosave.txt"
+	return isfile(p) and readfile(p) == "1" or false
+end
+function Config:SetAutoSavePref(b)
+	self.AutoSave = b and true or false
+	if self:Ensure() then pcall(writefile, self:Root() .. "/autosave.txt", self.AutoSave and "1" or "0") end
+end
 function Config:_Dirty()
 	if not self.AutoSave or not self.Current or self.Loading then return end
 	self._token = (self._token or 0) + 1
@@ -522,6 +540,15 @@ local function Pct(n) return string.format("%02d", n) end
 
 function Blush:_Init()
 	if self.Gui then return end
+	-- also sweep any leftover Blush gui from a copy that had no registry (older versions)
+	do
+		local ok, parent = pcall(GetGuiParent)
+		if ok and parent then
+			for _, c in ipairs(parent:GetChildren()) do
+				if c:IsA("ScreenGui") and c.Name:sub(1, 6) == "Blush_" then pcall(function() c:Destroy() end) end
+			end
+		end
+	end
 	local gui = Create("ScreenGui", {
 		Name = "Blush_" .. HttpService:GenerateGUID(false):sub(1, 6), ResetOnSpawn = false, IgnoreGuiInset = true,
 		ZIndexBehavior = Enum.ZIndexBehavior.Sibling, DisplayOrder = 10000,
@@ -1500,7 +1527,7 @@ function Container:AddDropdown(o)
 			BorderSizePixel = 0,
 			Position = UDim2.fromOffset(0, searchH + 4),
 			Size = UDim2.new(1, 0, 1, -(searchH + 8)),
-			ScrollBarThickness = 2,
+			ScrollBarThickness = 0, -- enabled after the open animation so it never flashes
 			ScrollBarImageTransparency = .4,
 			AutomaticCanvasSize = Enum.AutomaticSize.Y,
 			CanvasSize = UDim2.new(),
@@ -1508,6 +1535,7 @@ function Container:AddDropdown(o)
 			ElasticBehavior = Enum.ElasticBehavior.Never,
 			Parent = pop,
 		})
+		task.delay(.26, function() if lst.Parent then lst.ScrollBarThickness = 2 end end)
 		List(lst, 0) Pad(lst, 0, 0, 4, 4)
 		-- Mark so wheel scroll over the list doesn't close the popup
 		pop:SetAttribute("IsDropdown", true)
@@ -1692,7 +1720,7 @@ function TabMethods:AddSection(o)
 	-- sit slightly lower than the panel, so the edge fades out gently (never a hard outline).
 	for i = 1, 7 do
 		local layer = Frame({
-			Position = UDim2.new(0, -i, 0, -i + 4),
+			Position = UDim2.new(0, -i, 0, -i),
 			Size = UDim2.new(1, i * 2, 1, i * 2),
 			BackgroundColor3 = Color3.new(0, 0, 0),
 			BackgroundTransparency = .984,
@@ -1953,6 +1981,10 @@ function Window:AddTab(o)
 		ElasticBehavior = Enum.ElasticBehavior.Never,
 		Parent = page,
 	})
+	-- any page scroll (even fast wheel spins) closes an open dropdown / picker
+	scroll:GetPropertyChangedSignal("CanvasPosition"):Connect(function()
+		if self.Popup then self:ClosePopup() end
+	end)
 	local padTop, padBot, padSide = 18, 22, 18
 	local scrollList = List(scroll, 16)
 	Pad(scroll, padTop, padBot, padSide, padSide)
@@ -2109,8 +2141,9 @@ function Window:CreateSettingsTab()
 			if ok then note("Config imported", "Saved as \"" .. n .. "\"", "Success") refresh(n) else note("Config", tostring(r), "Error") end
 		end },
 	})
-	cfg:AddToggle({ Name = "Auto save loaded config", NoSave = true, Callback = function(v)
-		Config.AutoSave = v
+	Config.AutoSave = Config:GetAutoSavePref()
+	cfg:AddToggle({ Name = "Auto save loaded config", NoSave = true, Default = Config.AutoSave, Callback = function(v)
+		Config:SetAutoSavePref(v)
 		if v and not Config.Current then note("Auto save", "Load or save a config first", "Warning") end
 	end })
 	cfg:AddButtonRow({
@@ -2336,6 +2369,7 @@ function Window:CreatePlayersTab(opts)
 		Blush:Notify({ Title = "Teleport", Content = "Teleported to " .. p.Name, Duration = 2 })
 	end)
 	Connect(Players.LocalPlayer.CharacterAdded, function() if spectating then stopSpectate(true) end end)
+	Blush._StopSpectate = stopSpectate
 
 	-- footer ---------------------------------------------------------------------------
 	paintFooter = function()
@@ -2720,6 +2754,8 @@ function Blush:CreateWindow(cfg)
 end
 
 function Blush:Unload()
+	if self._StopSpectate then pcall(self._StopSpectate, true) end
+	self._StopSpectate = nil
 	for _, c in ipairs(self.Connections) do pcall(function() c:Disconnect() end) end
 	if self.Gui then self.Gui:Destroy() end
 	self.Gui, self.Windows, self.Keybinds, self.Flags, self.Options, self.AccentObjects, self.Connections, self._BindMap =
