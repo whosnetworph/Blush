@@ -996,9 +996,8 @@ local function MakeKeybind(container, parent, o, name, owner)
 		List(lst, 0) Pad(lst, 4, 4, 4, 4)
 		for _, m in ipairs(modes) do
 			local b = Button({ Size = UDim2.new(1, 0, 0, 26), Text = m, TextSize = 13, BackgroundColor3 = Theme.Element, BackgroundTransparency = 1,
-				TextXAlignment = Enum.TextXAlignment.Center,
 				TextColor3 = K.Mode == m and Theme.Accent or Theme.Text, Parent = lst })
-			Corner(b, 4) Pad(b, 0, 0, 6, 6)
+			Corner(b, 4) Pad(b, 0, 0, 9, 0)
 			b.MouseEnter:Connect(function() Tween(b, { BackgroundTransparency = .35 }, .1) end)
 			b.MouseLeave:Connect(function() Tween(b, { BackgroundTransparency = 1 }, .1) end)
 			b.MouseButton1Click:Connect(function() K:SetMode(m) window:ClosePopup() end)
@@ -1416,9 +1415,8 @@ function Container:AddDropdown(o)
 	if o.Name then Label({ Text = o.Name, FontFace = Fonts.Bold, Size = UDim2.new(1, 0, 0, 18), Parent = row }) end
 	local box = Button({ Position = UDim2.new(0, 0, 1, -30), Size = UDim2.new(1, 0, 0, 30), BackgroundColor3 = Theme.Element, Parent = row })
 	Corner(box, 5)
-	-- Text is centred between equal 30px gutters (the right gutter holds the arrow)
-	local txt = Label({ Position = UDim2.fromOffset(30, 0), Size = UDim2.new(1, -60, 1, 0), TextColor3 = Theme.SubText,
-		TextXAlignment = Enum.TextXAlignment.Center, TextTruncate = Enum.TextTruncate.AtEnd, Parent = box })
+	local txt = Label({ Position = UDim2.fromOffset(12, 0), Size = UDim2.new(1, -40, 1, 0), TextColor3 = Theme.SubText,
+		TextTruncate = Enum.TextTruncate.AtEnd, Parent = box })
 	-- Arrow is drawn from bars (not a font glyph) so it is exactly centered on the button
 	local arrow = Frame({ AnchorPoint = Vector2.new(.5, .5), Position = UDim2.new(1, -16, .5, 0), Size = UDim2.fromOffset(12, 12), Parent = box })
 	local function bar(w, h, x, y, rot)
@@ -1551,13 +1549,13 @@ function Container:AddDropdown(o)
 						Size = UDim2.new(1, 0, 0, itemH),
 						Text = tostring(v),
 						TextSize = 13,
-						TextXAlignment = Enum.TextXAlignment.Center,
+						TextXAlignment = Enum.TextXAlignment.Left,
 						BackgroundColor3 = Theme.Element,
 						BackgroundTransparency = 1,
 						LayoutOrder = i,
 						Parent = lst,
 					})
-					Corner(b, 4) Pad(b, 0, 0, 7, 7)
+					Corner(b, 4) Pad(b, 0, 0, 8, 8)
 					b.MouseEnter:Connect(function() Tween(b, { BackgroundTransparency = .4 }, .1) end)
 					b.MouseLeave:Connect(function() Tween(b, { BackgroundTransparency = 1 }, .1) end)
 					b.MouseButton1Click:Connect(function()
@@ -2586,9 +2584,11 @@ function Blush:CreateWindow(cfg)
 	local header = Frame({ Size = UDim2.new(1, 0, 0, HEADER_H), BackgroundColor3 = WHITE, ClipsDescendants = true, Parent = main })
 	AccentGradient(header, 0)
 	W.Header = header
-	-- Sleek flowing wave: two thin lines whose shape never changes. Each is built once as a long strip
-	-- of joined segments, and sliding the strip sideways by exactly one wavelength loops it seamlessly,
-	-- so the animation is one tween per line (no per-frame maths). Set cfg.Wave = false to turn it off.
+	-- Big flowing wave: one wide translucent ribbon (crests slide off the top and bottom of the header)
+	-- with a fainter echo ribbon behind it. Each ribbon is built once as a long strip of overlapping
+	-- segments inside a CanvasGroup, so overlaps never show and the curve stays smooth, and sliding the
+	-- strip by exactly one wavelength loops it seamlessly (one tween per ribbon, no per-frame maths).
+	-- cfg.Wave = false turns it off; cfg.Wave = { Color, Amplitude, Thickness, Opacity, Speed } customises it.
 	local TAU = math.pi * 2
 	local Wpx, midY = size.X, HEADER_H / 2
 	local function addWave(def)
@@ -2602,17 +2602,18 @@ function Blush:CreateWindow(cfg)
 		local count = math.ceil(total / def.step)
 		local step = total / count
 		local function yAt(x)
-			local p = x / period * TAU + def.phase
-			return midY + def.yoff + math.sin(p) * def.amp + math.sin(p * 2 + 1.1) * def.amp * .2
+			return midY + math.sin(x / period * TAU + def.phase) * def.amp
 		end
 		for i = 0, count - 1 do
 			local x0, x1 = i * step, (i + 1) * step
 			local y0, y1 = yAt(x0), yAt(x1)
 			local dx, dy = x1 - x0, y1 - y0
+			-- thickness swells and thins along the wave (periodic, so the loop stays seamless)
+			local thick = def.thick * (.72 + .28 * math.sin((x0 + x1) / 2 / period * TAU + def.phase + 1.9))
 			Frame({
 				AnchorPoint = Vector2.new(.5, .5),
 				Position = UDim2.fromOffset((x0 + x1) / 2, (y0 + y1) / 2),
-				Size = UDim2.fromOffset(math.sqrt(dx * dx + dy * dy) + 1.2, def.thick),
+				Size = UDim2.fromOffset(math.sqrt(dx * dx + dy * dy) + 2.5, thick),
 				Rotation = math.deg(math.atan2(dy, dx)),
 				BackgroundColor3 = def.color,
 				Parent = strip,
@@ -2620,17 +2621,20 @@ function Blush:CreateWindow(cfg)
 		end
 		local goal = UDim2.fromOffset(def.dir > 0 and -period or 0, 0)
 		TweenService:Create(strip, TweenInfo.new(period / def.speed, Linear, Enum.EasingDirection.Out, -1, false), { Position = goal }):Play()
-		-- slow breathing so the wave never looks mechanical
-		TweenService:Create(group, TweenInfo.new(3.2, Sine, Enum.EasingDirection.InOut, -1, true), { GroupTransparency = math.min(def.alpha + .18, .95) }):Play()
+		-- opacity breathes in and out
+		TweenService:Create(group, TweenInfo.new(2.6, Sine, Enum.EasingDirection.InOut, -1, true), { GroupTransparency = math.min(def.alpha + .26, .96) }):Play()
 	end
 	if cfg.Wave ~= false then
 		local wc = type(cfg.Wave) == "table" and cfg.Wave or {}
-		local color = wc.Color or Color3.fromRGB(255, 240, 255)
+		local color = wc.Color or Color3.fromRGB(255, 236, 255)
 		local speed = wc.Speed or 1 -- multiplier
-		addWave({ period = Wpx * .62, amp = wc.Amplitude or 4.5, yoff = 0, thick = 2, speed = 38 * speed, phase = 0,
-			alpha = wc.Opacity or .45, color = color, dir = 1, step = 6.5 })
-		addWave({ period = Wpx * .4, amp = (wc.Amplitude or 4.5) * .65, yoff = 3, thick = 1.4, speed = 24 * speed, phase = 1.3,
-			alpha = .78, color = color, dir = -1, step = 6.5 })
+		local amp = wc.Amplitude or 16
+		local thick = wc.Thickness or 18
+		-- echo ribbon first so the main one sits on top of it
+		addWave({ period = Wpx * .55, amp = amp * .6, thick = thick * .6, speed = 30 * speed, phase = 2.1,
+			alpha = .88, color = color, dir = -1, step = 4 })
+		addWave({ period = Wpx * .95, amp = amp, thick = thick, speed = 46 * speed, phase = 0,
+			alpha = wc.Opacity or .5, color = color, dir = 1, step = 4 })
 	end
 	local rng = Random.new(7)
 	for i = 1, 18 do
@@ -2650,77 +2654,8 @@ function Blush:CreateWindow(cfg)
 			Rotation = star.Rotation + 18,
 		}):Play()
 	end
-	-- Wave title: every letter bobs up and down on a travelling sine while a colour sweep runs through
-	-- the word (only if you give two Colors). Customise with cfg.TitleWave = { Enabled, Amplitude, Speed, Spread, Colors, ColorSpeed, Size,
-	-- Font, Spacing } (set TitleWave = false for a plain title), or change it later with
-	-- window:SetTitleWave({...}) and window:SetTitle("text"). Uses your UI font by default.
-	local twIn = cfg.TitleWave
-	if twIn == false then twIn = { Enabled = false } elseif type(twIn) ~= "table" then twIn = {} end
-	W.TitleWave = {
-		Enabled = twIn.Enabled ~= false,
-		Amplitude = twIn.Amplitude or 4,   -- px each letter travels up/down (same as the reference lib)
-		Speed = twIn.Speed or 2.5,         -- wave speed (radians per second)
-		Spread = twIn.Spread or .25,       -- phase gap between neighbouring letters (lower = longer wave)
-		Colors = twIn.Colors or { Color3.fromRGB(252, 222, 255) }, -- one colour = solid; give two for a colour sweep
-		ColorSpeed = twIn.ColorSpeed or 1.6,
-		Size = twIn.Size or 17,
-		Font = twIn.Font or Fonts.Bold,
-		Spacing = twIn.Spacing or 0,
-	}
-	local titleHolder = Frame({ Position = UDim2.fromOffset(16, 0), Size = UDim2.new(0, 0, 1, 0), AutomaticSize = Enum.AutomaticSize.X, Parent = header })
-	local titleList = List(titleHolder, 0, Enum.FillDirection.Horizontal)
-	titleList.VerticalAlignment = Enum.VerticalAlignment.Center
-	local letters = {}
-	local function buildTitle()
-		local o = W.TitleWave
-		if typeof(o.Colors) == "Color3" then o.Colors = { o.Colors, o.Colors } end
-		o.Colors[2] = o.Colors[2] or o.Colors[1]
-		for _, l in ipairs(letters) do l.Wrap:Destroy() end
-		table.clear(letters)
-		titleList.Padding = UDim.new(0, o.Spacing)
-		local i = 0
-		for _, cp in utf8.codes(W.Name) do
-			i += 1
-			local ch = utf8.char(cp)
-			local wrap = Frame({ Size = UDim2.new(0, 0, 1, 0), AutomaticSize = Enum.AutomaticSize.X, LayoutOrder = i, Parent = titleHolder })
-			local lbl = Label({
-				Text = ch, FontFace = o.Font, TextSize = o.Size, TextColor3 = o.Colors[1],
-				Size = UDim2.new(0, 0, 1, 0), AutomaticSize = Enum.AutomaticSize.X,
-				TextXAlignment = Enum.TextXAlignment.Center, Parent = wrap,
-			})
-			if ch == " " then
-				wrap.AutomaticSize = Enum.AutomaticSize.None
-				wrap.Size = UDim2.new(0, math.floor(o.Size * .32), 1, 0)
-				lbl.Visible = false
-			end
-			letters[i] = { Wrap = wrap, Label = lbl }
-		end
-	end
-	buildTitle()
-	function W:SetTitleWave(opts)
-		for k, v in pairs(opts or {}) do self.TitleWave[k] = v end
-		buildTitle()
-	end
-	function W:SetTitle(text)
-		self.Name = tostring(text)
-		buildTitle()
-	end
-	local titleT = 0
-	Connect(RunService.RenderStepped, function(dt)
-		if not W.Open then return end
-		titleT += dt
-		local o = W.TitleWave
-		local c1, c2 = o.Colors[1], o.Colors[2]
-		for i, l in ipairs(letters) do
-			if o.Enabled then
-				l.Label.Position = UDim2.fromOffset(0, math.sin(titleT * o.Speed - i * o.Spread) * o.Amplitude)
-				l.Label.TextColor3 = c1:Lerp(c2, (math.sin(titleT * o.ColorSpeed - i * o.Spread * 2) + 1) / 2)
-			else
-				l.Label.Position = UDim2.new()
-				l.Label.TextColor3 = c1
-			end
-		end
-	end)
+	Label({ Text = W.Name, FontFace = Fonts.Bold, TextSize = 17, TextColor3 = Color3.fromRGB(252, 222, 255),
+		Position = UDim2.fromOffset(16, 0), Size = UDim2.new(0, 120, 1, 0), Parent = header })
 	W.TabHolder = Frame({ AnchorPoint = Vector2.new(1, .5), Position = UDim2.new(1, -10, .5, 0), Size = UDim2.fromOffset(0, 30), AutomaticSize = Enum.AutomaticSize.X, Parent = header })
 	local tl = List(W.TabHolder, 6, Enum.FillDirection.Horizontal)
 	tl.VerticalAlignment = Enum.VerticalAlignment.Center
