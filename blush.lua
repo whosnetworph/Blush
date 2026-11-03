@@ -34,30 +34,6 @@ local Fonts = {
 }
 Blush.Fonts = Fonts
 
--- Full-width top accent bar that inherits the parent's corner radius (engraved look)
-local function EngravedLine(parent, thickness)
-	thickness = thickness or 2
-	local line = Frame({
-		Size = UDim2.new(1, 0, 0, thickness),
-		BackgroundColor3 = WHITE,
-		BorderSizePixel = 0,
-		ZIndex = 3,
-		Parent = parent,
-	})
-	AccentGradient(line)
-	-- Soft under-shadow for the engraved inset feel
-	local shade = Frame({
-		Position = UDim2.fromOffset(0, thickness),
-		Size = UDim2.new(1, 0, 0, 1),
-		BackgroundColor3 = Color3.new(0, 0, 0),
-		BackgroundTransparency = .68,
-		BorderSizePixel = 0,
-		ZIndex = 2,
-		Parent = parent,
-	})
-	return line, shade
-end
-
 local WHITE = Color3.new(1, 1, 1)
 local HEADER_H, FOOTER_H = 38, 42
 local Quint, Back, Linear, Sine = Enum.EasingStyle.Quint, Enum.EasingStyle.Back, Enum.EasingStyle.Linear, Enum.EasingStyle.Sine
@@ -131,6 +107,29 @@ local function AccentGradient(parent, rotation)
 	local g = Create("UIGradient", { Rotation = rotation or 0, Color = ColorSequence.new(Theme.Accent, Theme.Accent2), Parent = parent })
 	table.insert(Blush.AccentObjects, g)
 	return g
+end
+
+-- Full-width top accent bar; must sit after Frame + AccentGradient (locals resolve at definition)
+local function EngravedLine(parent, thickness)
+	thickness = thickness or 2
+	local line = Frame({
+		Size = UDim2.new(1, 0, 0, thickness),
+		BackgroundColor3 = WHITE,
+		BorderSizePixel = 0,
+		ZIndex = 3,
+		Parent = parent,
+	})
+	AccentGradient(line)
+	local shade = Frame({
+		Position = UDim2.fromOffset(0, thickness),
+		Size = UDim2.new(1, 0, 0, 1),
+		BackgroundColor3 = Color3.new(0, 0, 0),
+		BackgroundTransparency = .68,
+		BorderSizePixel = 0,
+		ZIndex = 2,
+		Parent = parent,
+	})
+	return line, shade
 end
 
 local function Press(btn)
