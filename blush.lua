@@ -603,8 +603,11 @@ function Blush:_Init()
 	})
 	local nl = List(self.NotifHolder, 8)
 	nl.VerticalAlignment = Enum.VerticalAlignment.Top
+	self.NotifList = nl
+	self.NotifyPos = self.NotifyPos or "Top Left"
 	nl.HorizontalAlignment = Enum.HorizontalAlignment.Left
 	self:_BuildHUD()
+	self:_PlaceNotif()
 end
 
 function Blush:_BuildHUD()
@@ -616,7 +619,8 @@ function Blush:_BuildHUD()
 	local wm = Make("CanvasGroup", {
 		Name = "Watermark",
 		BorderSizePixel = 0,
-		Position = UDim2.fromOffset(16, 16),
+		AnchorPoint = Vector2.new(1, 0),
+		Position = UDim2.new(1, -16, 0, 16),
 		Size = UDim2.fromOffset(0, 36),
 		AutomaticSize = Enum.AutomaticSize.X,
 		BackgroundColor3 = Theme.Panel,
@@ -636,18 +640,20 @@ function Blush:_BuildHUD()
 	Pad(row, 0, 0, 14, 14)
 
 	local order = 0
-	local function seg(text, bold)
+	-- fps / ping / time get fixed widths so the bar never changes size as numbers change
+	local function seg(text, bold, fixedW)
 		order += 1
-		return Label({
+		local props = {
 			Text = text,
 			FontFace = bold and Fonts.Bold or Fonts.Medium,
 			TextSize = 13,
 			TextColor3 = bold and WHITE or Theme.Text,
-			Size = UDim2.fromOffset(0, 24),
-			AutomaticSize = Enum.AutomaticSize.X,
+			Size = UDim2.fromOffset(fixedW or 0, 24),
 			LayoutOrder = order,
 			Parent = row,
-		})
+		}
+		if fixedW then props.TextXAlignment = Enum.TextXAlignment.Center else props.AutomaticSize = Enum.AutomaticSize.X end
+		return Label(props)
 	end
 	local function sep()
 		order += 1
@@ -664,15 +670,14 @@ function Blush:_BuildHUD()
 	sep()
 	local nameLbl = seg(lp and lp.Name or "player")
 	sep()
-	local fpsLbl = seg("0fps")
+	local fpsLbl = seg("000fps", false, 50)
 	sep()
-	local pingLbl = seg("0 ms")
+	local pingLbl = seg("0000 ms", false, 58)
 	sep()
-	local timeLbl = seg("00:00")
+	local timeLbl = seg("00:00", false, 38)
 	self.WatermarkFrame, self.WatermarkTitle = wm, title
 	self.WatermarkName = nameLbl
 	self.HideIdentity = false
-	Draggable(wm, wm, true)
 
 	local function maskName(s)
 		s = tostring(s or "")
@@ -723,7 +728,30 @@ function Blush:_RefreshBinds() end
 function Blush:SetWatermark(b)
 	self:_Init()
 	self.WatermarkFrame.Visible = b
-	if self.NotifHolder then self.NotifHolder.Position = UDim2.fromOffset(16, b and 62 or 16) end
+	self:_PlaceNotif()
+end
+
+Blush.NotifyPositions = { "Top Left", "Top Center", "Top Right", "Bottom Left", "Bottom Center", "Bottom Right" }
+-- Where notifications appear. One of Blush.NotifyPositions.
+function Blush:SetNotifyPosition(pos)
+	if not table.find(self.NotifyPositions, pos) then return end
+	self.NotifyPos = pos
+	if self.Gui then self:_PlaceNotif() end
+end
+function Blush:_PlaceNotif()
+	local h = self.NotifHolder
+	if not h then return end
+	local pos = self.NotifyPos or "Top Left"
+	local top = pos:find("Top", 1, true) ~= nil
+	local ax = pos:find("Left", 1, true) and 0 or (pos:find("Right", 1, true) and 1 or .5)
+	-- the watermark lives top-right, so keep top-right notifications clear of it
+	local y = 16
+	if top and ax == 1 and self.WatermarkFrame and self.WatermarkFrame.Visible then y = 62 end
+	h.AnchorPoint = Vector2.new(ax, top and 0 or 1)
+	h.Position = UDim2.new(ax, ax == 0 and 16 or (ax == 1 and -16 or 0), top and 0 or 1, top and y or -16)
+	if self.NotifList then
+		self.NotifList.VerticalAlignment = top and Enum.VerticalAlignment.Top or Enum.VerticalAlignment.Bottom
+	end
 end
 function Blush:SetWatermarkTitle(t)
 	self:_Init()
@@ -738,6 +766,10 @@ function Blush:Notify(o)
 	o = o or {}
 	local title, content, dur = o.Title or "Blush", o.Content or o.Text or "", o.Duration or 4
 
+	local npos = self.NotifyPos or "Top Left"
+	local sx = npos:find("Left", 1, true) and -24 or (npos:find("Right", 1, true) and 24 or 0)
+	local sy = sx == 0 and (npos:find("Top", 1, true) and -16 or 16) or 0
+	local slideOff = UDim2.fromOffset(sx, sy)
 	local hasBody = content ~= ""
 	local h = hasBody and 62 or 44
 	local wrap = Frame({
@@ -750,7 +782,7 @@ function Blush:Notify(o)
 		BorderSizePixel = 0,
 		BackgroundColor3 = Theme.Panel,
 		GroupTransparency = 1,
-		Position = UDim2.fromOffset(-24, 0),
+		Position = slideOff,
 		Size = UDim2.new(1, 0, 0, h),
 		ClipsDescendants = true,
 		Parent = wrap,
@@ -795,7 +827,7 @@ function Blush:Notify(o)
 	local function close()
 		if closed then return end
 		closed = true
-		Tween(card, { GroupTransparency = 1, Position = UDim2.fromOffset(-24, 0) }, .25)
+		Tween(card, { GroupTransparency = 1, Position = slideOff }, .25)
 		Tween(wrap, { Size = UDim2.new(1, 0, 0, 0) }, .22)
 		task.wait(.26)
 		if wrap.Parent then wrap:Destroy() end
@@ -1366,20 +1398,15 @@ function Container:AddDropdown(o)
 	local box = Button({ Position = UDim2.new(0, 0, 1, -30), Size = UDim2.new(1, 0, 0, 30), BackgroundColor3 = Theme.Element, Parent = row })
 	Corner(box, 5)
 	local st = Stroke(box, Theme.Stroke, 1)
-	Press(box)
 	local txt = Label({ Position = UDim2.fromOffset(11, 0), Size = UDim2.new(1, -36, 1, 0), TextColor3 = Theme.SubText, TextTruncate = Enum.TextTruncate.AtEnd, Parent = box })
-	local arrow = Label({
-		Text = o.Multi and "+" or "▼",
-		FontFace = Fonts.Medium,
-		TextSize = o.Multi and 13 or 9,
-		TextColor3 = Theme.SubText,
-		AnchorPoint = Vector2.new(.5, .5),
-		Position = UDim2.new(1, -14, .5, 0),
-		Size = UDim2.fromOffset(14, 14),
-		TextXAlignment = Enum.TextXAlignment.Center,
-		TextYAlignment = Enum.TextYAlignment.Center,
-		Parent = box,
-	})
+	-- Arrow is drawn from bars (not a font glyph) so it is exactly centered on the button
+	local arrow = Frame({ AnchorPoint = Vector2.new(.5, .5), Position = UDim2.new(1, -16, .5, 0), Size = UDim2.fromOffset(12, 12), Parent = box })
+	local function bar(w, h, x, y, rot)
+		local f = Frame({ AnchorPoint = Vector2.new(.5, .5), Position = UDim2.fromOffset(x, y), Size = UDim2.fromOffset(w, h),
+			BackgroundColor3 = Theme.SubText, Rotation = rot or 0, Parent = arrow })
+		Corner(f, 1)
+	end
+	if o.Multi then bar(10, 2, 6, 6) bar(2, 10, 6, 6) else bar(7, 2, 3.2, 6, 45) bar(7, 2, 8.8, 6, -45) end
 	self:_Add(D, row, o.Name, o)
 
 	local function selected()
@@ -1457,8 +1484,8 @@ function Container:AddDropdown(o)
 		local sb
 		if o.Search then
 			sb = Input({
-				Position = UDim2.fromOffset(5, 4),
-				Size = UDim2.new(1, -10, 0, 24),
+				Position = UDim2.fromOffset(4, 4),
+				Size = UDim2.new(1, -8, 0, 24),
 				BackgroundTransparency = 0,
 				BackgroundColor3 = Theme.Element,
 				PlaceholderText = "Search...",
@@ -1466,7 +1493,7 @@ function Container:AddDropdown(o)
 				TextSize = 12,
 				Parent = pop,
 			})
-			Corner(sb, 4) Pad(sb, 0, 0, 9, 9)
+			Corner(sb, 4) Pad(sb, 0, 0, 7, 7)
 		end
 		local lst = Make("ScrollingFrame", {
 			BackgroundTransparency = 1,
@@ -1661,15 +1688,14 @@ function TabMethods:AddSection(o)
 	local frame = Frame({ Size = UDim2.new(1, 0, 0, 0), AutomaticSize = Enum.AutomaticSize.Y, BackgroundColor3 = Theme.Panel, ZIndex = 2, Parent = wrap })
 	Corner(frame, 7)
 	Stroke(frame, Theme.Stroke, 1, .78)
-	-- Soft bottom-only shadow: stacked rounded layers tucked behind the section.
-	-- Each layer is a little deeper and narrower, so the shadow fades out in a curve
-	-- under the bottom edge and never shows on the sides or top.
-	for i = 1, 5 do
+	-- Soft depth: stacked rounded layers that spread out a little further each time and
+	-- sit slightly lower than the panel, so the edge fades out gently (never a hard outline).
+	for i = 1, 7 do
 		local layer = Frame({
-			Position = UDim2.new(0, i * 2, 0, 0),
-			Size = UDim2.new(1, -i * 4, 1, i),
+			Position = UDim2.new(0, -i, 0, -i + 4),
+			Size = UDim2.new(1, i * 2, 1, i * 2),
 			BackgroundColor3 = Color3.new(0, 0, 0),
-			BackgroundTransparency = .992,
+			BackgroundTransparency = .984,
 			ZIndex = 1,
 			Parent = wrap,
 		})
@@ -1756,14 +1782,8 @@ function Window:OpenPopup(anchor, size, onClose)
 	local gap = 8 -- space between trigger and list
 	local function place()
 		local sc = math.max(self.Scale.Scale, .01)
-		-- Buttons shrink (UIScale) while pressed; undo that so the popup matches the real button
-		local us = anchor:FindFirstChildOfClass("UIScale")
-		local k = math.max(us and us.Scale or 1, .01)
-		local rawSize = anchor.AbsoluteSize
-		local fullSize = rawSize / k
-		local fullPos = anchor.AbsolutePosition + (rawSize - fullSize) / 2
-		local ap = (fullPos - ov.AbsolutePosition) / sc
-		local as = fullSize / sc
+		local ap = (anchor.AbsolutePosition - ov.AbsolutePosition) / sc
+		local as = anchor.AbsoluteSize / sc
 		local ovs = ov.AbsoluteSize / sc
 		-- Popup spans the full width of its trigger (wider popups right-align to it)
 		local w = math.max(as.X > 1 and as.X or 0, size.X.Offset, 60)
@@ -1966,13 +1986,16 @@ function Window:AddTab(o)
 	task.defer(updateCanvas)
 
 	table.insert(self.Tabs, Tab)
-	if #self.Tabs == 1 then Tab:Select() end
+	if not o.Pinned and not self._HasUserTab then
+		self._HasUserTab = true
+		Tab:Select()
+	end
 	return Tab
 end
 
 function Window:CreateSettingsTab()
 	if self._SettingsTab then return self._SettingsTab end
-	local tab = self:AddTab({ Name = "Settings", Icon = "settings" })
+	local tab = self:AddTab({ Name = "Settings", Icon = "settings", Pinned = true })
 	-- Pin settings to the far right of the tab bar
 	tab.Button.LayoutOrder = 9999
 	tab.Index = 9999
@@ -1982,6 +2005,12 @@ function Window:CreateSettingsTab()
 		KeyChanged = function(k) self.Keybind = k end })
 	menu:AddToggle({ Name = "Watermark", Default = true, Callback = function(v) Blush:SetWatermark(v) end })
 	menu:AddToggle({ Name = "Notifications", Default = true, Callback = function(v) Blush.Notifications = v end })
+	menu:AddDropdown({
+		Name = "Notification position",
+		Values = Blush.NotifyPositions,
+		Default = Blush.NotifyPos or "Top Left",
+		Callback = function(v) Blush:SetNotifyPosition(v) end,
+	})
 	menu:AddToggle({
 		Name = "Hide username",
 		Default = false,
@@ -2130,35 +2159,38 @@ function Blush:SetPlayerStatus(plr, status)
 	Config:_Dirty()
 end
 
-function Window:CreatePlayersTab()
+-- opts: { Status = true, Teleport = true, Spectate = true } -- set any to false to remove that button
+function Window:CreatePlayersTab(opts)
 	if self._PlayersTab then return self._PlayersTab end
-	local tab = self:AddTab({ Name = "Players", Icon = "users" })
+	opts = type(opts) == "table" and opts or {}
+	local tab = self:AddTab({ Name = "Players", Icon = "users", Pinned = true })
 	-- sit just left of the pinned Settings tab
 	tab.Button.LayoutOrder = 9998
 	tab.Index = 9998
-	self._PlayersTab = tab
+	self._PlayersTab, self.PlayersTab = tab, tab
+	tab.Actions = {}
 	tab.Scroll.Visible = false
+
+	local enabled = { Status = opts.Status ~= false, Teleport = opts.Teleport ~= false, Spectate = opts.Spectate ~= false }
+	local FOOT_MIN = 78
+	local BTN_W, BTN_H, BTN_GAP = 86, 26, 6
 
 	local root = Frame({ Size = UDim2.fromScale(1, 1), Parent = tab.Page })
 	Pad(root, 18, 18, 18, 18)
 
-	local FOOT_H = 86
 	-- list card ---------------------------------------------------------------
-	local card = Frame({ Size = UDim2.new(1, 0, 1, -(FOOT_H + 16)), BackgroundColor3 = Theme.Panel, ClipsDescendants = true, Parent = root })
+	local card = Frame({ Size = UDim2.new(1, 0, 1, -(FOOT_MIN + 16)), BackgroundColor3 = Theme.Panel, ClipsDescendants = true, Parent = root })
 	Corner(card, 7)
 	Stroke(card, Theme.Stroke, 1, .78)
 
 	local head = Frame({ Size = UDim2.new(1, 0, 0, 36), Parent = card })
-	local function col(text, x, w, parent)
+	local function col(text, x, w)
 		return Label({ Text = text, FontFace = Fonts.Bold, TextSize = 13, TextColor3 = Theme.SubText,
-			Position = UDim2.new(x, x == 0 and 16 or 0, 0, 0), Size = UDim2.new(w, x == 0 and -16 or -8, 1, 0), Parent = parent })
+			Position = UDim2.new(x, x == 0 and 16 or 0, 0, 0), Size = UDim2.new(w, x == 0 and -16 or -8, 1, 0), Parent = head })
 	end
-	local hUser = col("Username", 0, .36, head)
-	local hTeam = col("Team", .36, .28, head)
-	local hStat = col("Status", .64, .3, head)
+	col("Username", 0, .36) col("Team", .36, .28) col("Status", .64, .3)
 	Frame({ Position = UDim2.new(0, 10, 1, -1), Size = UDim2.new(1, -20, 0, 1), BackgroundColor3 = Theme.Stroke, BackgroundTransparency = .45, Parent = head })
 
-	-- search (magnifier at the right of the header row)
 	local sbtn = Button({ AnchorPoint = Vector2.new(1, .5), Position = UDim2.new(1, -8, .5, 0), Size = UDim2.fromOffset(26, 26), Parent = head })
 	local sicon = Label({ BackgroundTransparency = 1, AnchorPoint = Vector2.new(.5, .5), Position = UDim2.fromScale(.5, .5), Size = UDim2.fromOffset(16, 16),
 		TextSize = 15, TextColor3 = Theme.SubText, TextXAlignment = Enum.TextXAlignment.Center, TextYAlignment = Enum.TextYAlignment.Center, Parent = sbtn })
@@ -2185,44 +2217,69 @@ function Window:CreatePlayersTab()
 	List(scroll, 2) Pad(scroll, 0, 6, 6, 6)
 
 	-- selected player card ------------------------------------------------------
-	local foot = Frame({ AnchorPoint = Vector2.new(0, 1), Position = UDim2.fromScale(0, 1), Size = UDim2.new(1, 0, 0, FOOT_H), BackgroundColor3 = Theme.Panel, Parent = root })
+	local foot = Frame({ AnchorPoint = Vector2.new(0, 1), Position = UDim2.fromScale(0, 1), Size = UDim2.new(1, 0, 0, FOOT_MIN), BackgroundColor3 = Theme.Panel, Parent = root })
 	Corner(foot, 7)
 	Stroke(foot, Theme.Stroke, 1, .78)
-	local avatar = Create("ImageLabel", { Position = UDim2.fromOffset(15, 19), Size = UDim2.fromOffset(48, 48), BackgroundColor3 = Theme.Element, BorderSizePixel = 0, Parent = foot })
+	local avatar = Create("ImageLabel", { AnchorPoint = Vector2.new(0, .5), Position = UDim2.new(0, 15, .5, 0), Size = UDim2.fromOffset(48, 48), BackgroundColor3 = Theme.Element, BorderSizePixel = 0, Parent = foot })
 	Corner(avatar, 6)
-	local fName = Label({ Text = "No player selected", FontFace = Fonts.Bold, TextSize = 13, Position = UDim2.fromOffset(75, 18), Size = UDim2.new(1, -75 - 280, 0, 16),
-		TextTruncate = Enum.TextTruncate.AtEnd, Parent = foot })
-	local fId = Label({ Text = "Click a player in the list", FontFace = Fonts.Medium, TextSize = 12, TextColor3 = Theme.SubText, Position = UDim2.fromOffset(75, 36), Size = UDim2.new(1, -75 - 280, 0, 16), Parent = foot })
-	local fAge = Label({ Text = "", FontFace = Fonts.Medium, TextSize = 12, TextColor3 = Theme.SubText, Position = UDim2.fromOffset(75, 53), Size = UDim2.new(1, -75 - 280, 0, 16), Parent = foot })
+	local info = Frame({ AnchorPoint = Vector2.new(0, .5), Position = UDim2.new(0, 75, .5, 0), Size = UDim2.new(1, -75 - 290, 0, 50), Parent = foot })
+	local fName = Label({ Text = "No player selected", FontFace = Fonts.Bold, TextSize = 13, Size = UDim2.new(1, 0, 0, 16), TextTruncate = Enum.TextTruncate.AtEnd, Parent = info })
+	local fId = Label({ Text = "Click a player in the list", FontFace = Fonts.Medium, TextSize = 12, TextColor3 = Theme.SubText, Position = UDim2.fromOffset(0, 17), Size = UDim2.new(1, 0, 0, 16), Parent = info })
+	local fAge = Label({ Text = "", FontFace = Fonts.Medium, TextSize = 12, TextColor3 = Theme.SubText, Position = UDim2.fromOffset(0, 34), Size = UDim2.new(1, 0, 0, 16), Parent = info })
 
-	local statusBtns = {}
-	local btnRow = Frame({ AnchorPoint = Vector2.new(1, 0), Position = UDim2.new(1, -15, 0, 14), Size = UDim2.fromOffset(264, 26), Parent = foot })
-	List(btnRow, 6, Enum.FillDirection.Horizontal)
-	local function styleBtn(b, name, order)
-		b.LayoutOrder = order
+	local holder = Frame({ AnchorPoint = Vector2.new(1, .5), Position = UDim2.new(1, -15, .5, 0), Size = UDim2.fromOffset(BTN_W * 3 + BTN_GAP * 2, 0), Parent = foot })
+	local hl = List(holder, BTN_GAP, Enum.FillDirection.Horizontal)
+	hl.Wraps = true
+	hl.HorizontalAlignment = Enum.HorizontalAlignment.Right
+	hl.VerticalAlignment = Enum.VerticalAlignment.Top
+
+	-- state ------------------------------------------------------------------------
+	local selected, rows, filter = nil, {}, ""
+	local entries, statusBtns = {}, {}
+	local nextCustom = 0
+	local paintFooter, paintSpectate
+
+	local function isOn(e)
+		if e.Group == "Custom" then return e.Enabled end
+		return enabled[e.Group]
+	end
+	local function relayout()
+		local n = 0
+		for _, e in ipairs(entries) do if isOn(e) then n += 1 end end
+		local nrows = math.ceil(n / 3)
+		local bh = nrows > 0 and (nrows * BTN_H + (nrows - 1) * BTN_GAP) or 0
+		local fh = math.max(FOOT_MIN, bh + 34)
+		foot.Size = UDim2.new(1, 0, 0, fh)
+		card.Size = UDim2.new(1, 0, 1, -(fh + 16))
+		holder.Size = UDim2.fromOffset(BTN_W * 3 + BTN_GAP * 2, bh)
+	end
+
+	local function newEntry(group, name, order)
+		local b = Button({ Size = UDim2.fromOffset(BTN_W, BTN_H), BackgroundColor3 = Theme.Element, Text = "", LayoutOrder = order, Visible = false, Parent = holder })
 		Corner(b, 5)
 		local st = Stroke(b, Theme.Stroke, 1)
 		local fillF = Frame({ Size = UDim2.fromScale(1, 1), BackgroundColor3 = WHITE, BackgroundTransparency = 1, Parent = b })
 		Corner(fillF, 5) AccentGradient(fillF)
-		local lbl = Label({ Text = name, FontFace = Fonts.Semi, TextSize = 13, TextColor3 = Theme.SubText, TextXAlignment = Enum.TextXAlignment.Center, Size = UDim2.fromScale(1, 1), ZIndex = 2, Parent = b })
+		local lbl = Label({ Text = name, FontFace = Fonts.Semi, TextSize = 13, TextColor3 = Theme.SubText, TextXAlignment = Enum.TextXAlignment.Center,
+			TextTruncate = Enum.TextTruncate.AtEnd, Size = UDim2.new(1, -8, 1, 0), Position = UDim2.fromOffset(4, 0), ZIndex = 2, Parent = b })
 		Press(b)
 		b.MouseEnter:Connect(function() if b:GetAttribute("On") ~= true then Tween(b, { BackgroundColor3 = Color3.fromRGB(56, 62, 78) }, .12) end end)
 		b.MouseLeave:Connect(function() Tween(b, { BackgroundColor3 = Theme.Element }, .12) end)
-		return { Btn = b, Fill = fillF, Label = lbl, Stroke = st }
+		local e = { Btn = b, Fill = fillF, Label = lbl, Stroke = st, Group = group, Enabled = true }
+		table.insert(entries, e)
+		return e
 	end
-	for i, name in ipairs({ "Neutral", "Enemy", "Friendly" }) do
-		local b = Button({ Size = UDim2.new(1 / 3, -4, 1, 0), BackgroundColor3 = Theme.Element, Text = "", Parent = btnRow })
-		statusBtns[name] = styleBtn(b, name, i)
+	local function paintOn(e, on, dim)
+		e.Btn:SetAttribute("On", on)
+		Tween(e.Fill, { BackgroundTransparency = on and 0 or 1 }, .18)
+		Tween(e.Stroke, { Transparency = on and 1 or 0 }, .18)
+		Tween(e.Label, { TextColor3 = on and WHITE or Theme.SubText, TextTransparency = dim and .55 or 0 }, .18)
 	end
-	-- default actions: Teleport / Spectate
-	local actRow = Frame({ AnchorPoint = Vector2.new(1, 0), Position = UDim2.new(1, -15, 0, 46), Size = UDim2.fromOffset(264, 26), Parent = foot })
-	List(actRow, 6, Enum.FillDirection.Horizontal)
-	local tpBtn = styleBtn(Button({ Size = UDim2.new(.5, -3, 1, 0), BackgroundColor3 = Theme.Element, Text = "", Parent = actRow }), "Teleport", 1)
-	local specBtn = styleBtn(Button({ Size = UDim2.new(.5, -3, 1, 0), BackgroundColor3 = Theme.Element, Text = "", Parent = actRow }), "Spectate", 2)
 
-	-- state ------------------------------------------------------------------------
-	local selected, rows, filter = nil, {}, ""
-	local blush_paintSpectate
+	for i, name in ipairs({ "Neutral", "Enemy", "Friendly" }) do statusBtns[name] = newEntry("Status", name, i) end
+	local tpBtn = newEntry("Teleport", "Teleport", 10)
+	local specBtn = newEntry("Spectate", "Spectate", 11)
+
 	local function dispName(p) return p.DisplayName ~= p.Name and (p.Name .. " (" .. p.DisplayName .. ")") or p.Name end
 	local function statusColor(p)
 		local st = Blush:GetPlayerStatus(p)
@@ -2230,34 +2287,26 @@ function Window:CreatePlayersTab()
 		return STATUS_COLORS[st] or Theme.SubText
 	end
 
-	-- teleport / spectate -------------------------------------------------------
+	-- spectate / teleport -------------------------------------------------------------
 	local spectating, specConn = nil, nil
-	blush_paintSpectate = function()
-		local on = spectating ~= nil
+	paintSpectate = function()
 		local isLocal = selected == Players.LocalPlayer
-		local active = on and (selected == spectating or isLocal)
-		specBtn.Btn:SetAttribute("On", active)
+		local active = spectating ~= nil and (selected == spectating or isLocal)
 		specBtn.Label.Text = active and "Unspectate" or "Spectate"
-		Tween(specBtn.Fill, { BackgroundTransparency = active and 0 or 1 }, .18)
-		Tween(specBtn.Stroke, { Transparency = active and 1 or 0 }, .18)
-		Tween(specBtn.Label, { TextColor3 = active and WHITE or Theme.SubText, TextTransparency = (isLocal and not on) and .55 or 0 }, .18)
+		paintOn(specBtn, active, isLocal and spectating == nil)
 	end
-	local function cameraSubjectFor(p)
-		local c = p and p.Character
-		return c and c:FindFirstChildOfClass("Humanoid")
-	end
+	local function humOf(p) local c = p and p.Character return c and c:FindFirstChildOfClass("Humanoid") end
 	local function stopSpectate(silent)
 		if specConn then specConn:Disconnect() specConn = nil end
+		local was = spectating
 		spectating = nil
-		local cam = workspace.CurrentCamera
-		local hum = cameraSubjectFor(Players.LocalPlayer)
+		local cam, hum = workspace.CurrentCamera, humOf(Players.LocalPlayer)
 		if cam and hum then cam.CameraSubject = hum end
-		blush_paintSpectate()
-		if not silent then Blush:Notify({ Title = "Spectate", Content = "Stopped spectating", Duration = 2 }) end
+		paintSpectate()
+		if was and not silent then Blush:Notify({ Title = "Spectate", Content = "Stopped spectating", Duration = 2 }) end
 	end
 	local function startSpectate(p)
-		local cam = workspace.CurrentCamera
-		local hum = cameraSubjectFor(p)
+		local cam, hum = workspace.CurrentCamera, humOf(p)
 		if not cam or not hum then
 			return Blush:Notify({ Title = "Spectate", Content = p.Name .. " has no character", Type = "Warning", Duration = 3 })
 		end
@@ -2268,7 +2317,7 @@ function Window:CreatePlayersTab()
 			local h = c:WaitForChild("Humanoid", 5)
 			if spectating == p and h then workspace.CurrentCamera.CameraSubject = h end
 		end)
-		blush_paintSpectate()
+		paintSpectate()
 		Blush:Notify({ Title = "Spectate", Content = "Spectating " .. p.Name, Duration = 2 })
 	end
 	specBtn.Btn.MouseButton1Click:Connect(function()
@@ -2278,9 +2327,8 @@ function Window:CreatePlayersTab()
 	tpBtn.Btn.MouseButton1Click:Connect(function()
 		local p = selected
 		if not p or p == Players.LocalPlayer then return end
-		local myChar, theirChar = Players.LocalPlayer.Character, p.Character
-		local myRoot = myChar and myChar:FindFirstChild("HumanoidRootPart")
-		local theirRoot = theirChar and theirChar:FindFirstChild("HumanoidRootPart")
+		local myRoot = Players.LocalPlayer.Character and Players.LocalPlayer.Character:FindFirstChild("HumanoidRootPart")
+		local theirRoot = p.Character and p.Character:FindFirstChild("HumanoidRootPart")
 		if not (myRoot and theirRoot) then
 			return Blush:Notify({ Title = "Teleport", Content = "Missing character or root part", Type = "Warning", Duration = 3 })
 		end
@@ -2289,47 +2337,42 @@ function Window:CreatePlayersTab()
 	end)
 	Connect(Players.LocalPlayer.CharacterAdded, function() if spectating then stopSpectate(true) end end)
 
-	local function paintFooter()
+	-- footer ---------------------------------------------------------------------------
+	paintFooter = function()
+		relayout()
 		local p = selected
 		if not p or not p.Parent then
 			selected = nil
 			fName.Text, fId.Text, fAge.Text = "No player selected", "Click a player in the list", ""
 			avatar.Image = ""
-			for _, d in pairs(statusBtns) do d.Btn.Visible = false end
-			actRow.Visible = false
+			for _, e in ipairs(entries) do e.Btn.Visible = false end
 			return
 		end
-		actRow.Visible = true
 		fName.Text = dispName(p)
 		fId.Text = tostring(p.UserId)
 		fAge.Text = p.AccountAge .. " days old"
 		local isLocal = p == Players.LocalPlayer
 		local cur = Blush:GetPlayerStatus(p)
-		for name, d in pairs(statusBtns) do
-			d.Btn.Visible = true
-			local on = name == cur
-			d.Btn:SetAttribute("On", on)
-			Tween(d.Fill, { BackgroundTransparency = on and 0 or 1 }, .18)
-			Tween(d.Stroke, { Transparency = on and 1 or 0 }, .18)
-			Tween(d.Label, { TextColor3 = on and WHITE or Theme.SubText, TextTransparency = isLocal and .55 or 0 }, .18)
-			d.Btn.Active = not isLocal
-			d.Btn.AutoButtonColor = false
-		end
+		for _, e in ipairs(entries) do e.Btn.Visible = isOn(e) end
+		for name, e in pairs(statusBtns) do paintOn(e, name == cur, isLocal) end
 		tpBtn.Label.TextTransparency = isLocal and .55 or 0
-		tpBtn.Btn.Active = not isLocal
-		blush_paintSpectate()
+		paintSpectate()
+		for _, A in ipairs(tab.Actions) do
+			paintOn(A.Entry, A.Toggle == true and A.State == true, isLocal and not A.AllowLocal)
+		end
 		task.spawn(function()
 			local ok, img = pcall(function() return Players:GetUserThumbnailAsync(p.UserId, Enum.ThumbnailType.HeadShot, Enum.ThumbnailSize.Size100x100) end)
 			if ok and selected == p then avatar.Image = img end
 		end)
 	end
 
-	for name, d in pairs(statusBtns) do
-		d.Btn.MouseButton1Click:Connect(function()
+	for name, e in pairs(statusBtns) do
+		e.Btn.MouseButton1Click:Connect(function()
 			if selected and selected ~= Players.LocalPlayer then Blush:SetPlayerStatus(selected, name) end
 		end)
 	end
 
+	-- list ----------------------------------------------------------------------------------
 	local function paintRow(r)
 		local on = selected == r.Player
 		Tween(r.Frame, { BackgroundTransparency = on and .32 or 1 }, .15)
@@ -2357,7 +2400,7 @@ function Window:CreatePlayersTab()
 				local u = Label({ Text = dispName(p), TextSize = 13, Position = UDim2.fromOffset(10, 0), Size = UDim2.new(.36, -10, 1, 0), TextTruncate = Enum.TextTruncate.AtEnd, ZIndex = 2, Parent = f })
 				local t = Label({ Text = p.Team and p.Team.Name or "None", FontFace = Fonts.Medium, TextSize = 13, TextColor3 = Theme.SubText,
 					Position = UDim2.new(.36, 0, 0, 0), Size = UDim2.new(.28, -8, 1, 0), TextTruncate = Enum.TextTruncate.AtEnd, ZIndex = 2, Parent = f })
-				local st = Label({ Text = Blush:GetPlayerStatus(p) == "Neutral" and "Neutral" or Blush:GetPlayerStatus(p), FontFace = Fonts.Medium, TextSize = 13,
+				local st = Label({ Text = Blush:GetPlayerStatus(p), FontFace = Fonts.Medium, TextSize = 13,
 					Position = UDim2.new(.64, 0, 0, 0), Size = UDim2.new(.36, -8, 1, 0), ZIndex = 2, Parent = f })
 				local r = { Frame = f, User = u, Team = t, Status = st, Player = p }
 				rows[p] = r
@@ -2392,9 +2435,7 @@ function Window:CreatePlayersTab()
 	end)
 	sbox:GetPropertyChangedSignal("Text"):Connect(function() filter = sbox.Text rebuild() end)
 
-	local function watch(p)
-		Connect(p:GetPropertyChangedSignal("Team"), rebuild)
-	end
+	local function watch(p) Connect(p:GetPropertyChangedSignal("Team"), rebuild) end
 	for _, p in ipairs(Players:GetPlayers()) do watch(p) end
 	Connect(Players.PlayerAdded, function(p) watch(p) rebuild() end)
 	Connect(Players.PlayerRemoving, function(p)
@@ -2402,6 +2443,58 @@ function Window:CreatePlayersTab()
 		if selected == p then selected = nil end
 		task.defer(rebuild)
 	end)
+
+	-- public API ---------------------------------------------------------------------------
+	-- tab:SetDefaultEnabled("Status" | "Teleport" | "Spectate", bool)
+	function tab:SetDefaultEnabled(name, on)
+		local k = tostring(name):lower()
+		if k == "neutral" or k == "enemy" or k == "friendly" or k == "status" then k = "Status"
+		elseif k == "teleport" then k = "Teleport"
+		elseif k == "spectate" then k = "Spectate"
+		else return end
+		enabled[k] = on and true or false
+		if k == "Spectate" and not on then stopSpectate(true) end
+		paintFooter()
+	end
+	-- tab:AddAction({ Name = "Bring", Callback = function(player, state) end, Toggle = false, AllowLocal = false })
+	function tab:AddAction(o)
+		if type(o) == "string" then o = { Name = o } end
+		o = o or {}
+		nextCustom += 1
+		local A = { Name = o.Name or "Action", Callback = o.Callback, Toggle = o.Toggle == true, AllowLocal = o.AllowLocal == true, State = o.Default == true }
+		local e = newEntry("Custom", A.Name, 100 + nextCustom)
+		A.Entry = e
+		e.Btn.MouseButton1Click:Connect(function()
+			local p = selected
+			if not p then return end
+			if p == Players.LocalPlayer and not A.AllowLocal then return end
+			if A.Toggle then
+				A.State = not A.State
+				paintOn(e, A.State, false)
+			end
+			if A.Callback then task.spawn(A.Callback, p, A.State) end
+		end)
+		function A:SetName(n) self.Name = n e.Label.Text = n end
+		function A:SetEnabled(b) e.Enabled = b and true or false paintFooter() end
+		function A:Remove()
+			local i = table.find(tab.Actions, self)
+			if i then table.remove(tab.Actions, i) end
+			local j = table.find(entries, e)
+			if j then table.remove(entries, j) end
+			e.Btn:Destroy()
+			paintFooter()
+		end
+		table.insert(tab.Actions, A)
+		paintFooter()
+		return A
+	end
+	function tab:RemoveAction(name)
+		for _, A in ipairs(tab.Actions) do
+			if A.Name == name then A:Remove() return true end
+		end
+		return false
+	end
+
 	rebuild()
 
 	-- statuses are saved / loaded with configs: { [userId] = "Enemy" | "Friendly" }
@@ -2430,6 +2523,12 @@ function Window:CreatePlayersTab()
 	store.Default = { {} }
 	Blush:_Flag(store, "Players: Status")
 	return tab
+end
+
+-- Window:AddPlayerAction({ Name = "...", Callback = function(player) end }) adds a button to the Players tab
+function Window:AddPlayerAction(o)
+	local t = self._PlayersTab or self:CreatePlayersTab()
+	return t:AddAction(o)
 end
 
 function Blush:CreateWindow(cfg)
@@ -2603,8 +2702,12 @@ function Blush:CreateWindow(cfg)
 		W:CreateSettingsTab()
 	end
 	if cfg.PlayersTab ~= false then
-		W:CreatePlayersTab()
+		W:CreatePlayersTab(type(cfg.PlayersTab) == "table" and cfg.PlayersTab or nil)
 	end
+	-- if no regular tab ever gets added, fall back to the first one that exists
+	task.delay(.4, function()
+		if not W.ActiveTab and W.Tabs[1] then W.Tabs[1]:Select() end
+	end)
 
 	table.insert(self.Windows, W)
 	W:SetOpen(cfg.Open ~= false)
