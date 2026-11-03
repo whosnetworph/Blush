@@ -264,72 +264,71 @@ function Blush:_Flag(el, flag)
 	self.Options[flag] = el
 end
 
-local Icons = { Module = nil, Failed = false, Molto = nil, MoltoFailed = false }
+local Icons = { Molto = nil, MoltoFailed = false }
+-- Material Symbols names used by Molto material provider
 local IconAlias = {
-	mouse = "mouse-pointer-2", aim = "crosshair", visuals = "eye", colors = "palette", colours = "palette",
-	settings = "settings", gear = "settings", misc = "sliders-horizontal", sliders = "sliders-horizontal",
-	search = "search", rifle = "crosshair", pistol = "target", sniper = "crosshair", smg = "zap",
+	mouse = "mouse", aim = "ads_click", crosshair = "ads_click", visuals = "visibility", eye = "visibility",
+	colors = "palette", colours = "palette", settings = "settings", gear = "settings",
+	misc = "tune", sliders = "tune", search = "search", combat = "swords", player = "person",
 }
 
-local function ResolveIcon(name)
-	local n = tostring(name)
-	if tonumber(n) then return "rbxassetid://" .. n end
-	if n:find("rbx", 1, true) == 1 then return n end
+local function EnsureMolto()
+	if Icons.Molto or Icons.MoltoFailed then return Icons.Molto end
+	local ok, m = pcall(function()
+		return loadstring(game:HttpGet("https://molto.pages.dev/source.lua"))()
+	end)
+	if ok and type(m) == "table" then
+		Icons.Molto = m
+		pcall(function()
+			if m.SetProvider then m.SetProvider("material") end
+		end)
+	else
+		Icons.MoltoFailed = true
+	end
+	return Icons.Molto
+end
+
+-- Apply Molto icon onto a TextLabel or ImageLabel (official SetIcon API)
+local function SetMoltoIcon(inst, name)
+	local n = tostring(name or "")
+	if n == "" then return false end
+	if tonumber(n) or n:find("rbx", 1, true) == 1 then
+		if inst:IsA("ImageLabel") then
+			inst.Image = tonumber(n) and ("rbxassetid://" .. n) or n
+			return true
+		end
+		return false
+	end
 	n = IconAlias[n:lower()] or n
 	if Blush.IconProvider then
 		local ok, r = pcall(Blush.IconProvider, n)
-		if ok and r then return r end
-	end
-	-- Prefer Molto icon registry (lucide / tabler / heroicons / solar / material / fluent / phosphor)
-	if not Icons.Molto and not Icons.MoltoFailed then
-		local ok, m = pcall(function()
-			return loadstring(game:HttpGet("https://molto.pages.dev/source.lua"))()
-		end)
-		if ok and type(m) == "table" then
-			Icons.Molto = m
-			pcall(function()
-				if m.SetProvider then m.SetProvider("lucide") end
-			end)
-		else
-			Icons.MoltoFailed = true
+		if ok and r then
+			if type(r) == "string" and inst:IsA("ImageLabel") then inst.Image = r return true end
 		end
 	end
-	if Icons.Molto then
-		local ok, asset = pcall(function()
-			if Icons.Molto.GetAsset then
-				return Icons.Molto.GetAsset(n)
-			elseif Icons.Molto.get then
-				return Icons.Molto.get(n)
+	local reg = EnsureMolto()
+	if not reg then return false end
+	local ok = pcall(function()
+		if reg.SetIcon then
+			reg.SetIcon(inst, n)
+		elseif reg.GetAsset then
+			local asset = reg.GetAsset(n)
+			assert(asset, "missing")
+			if inst:IsA("TextLabel") and asset.FontFace then
+				inst.Text = asset.Text
+				inst.FontFace = asset.FontFace
+			elseif inst:IsA("ImageLabel") then
+				inst.Image = asset.Url or ""
+				if asset.ImageRectSize then
+					inst.ImageRectSize = asset.ImageRectSize
+					inst.ImageRectOffset = asset.ImageRectOffset or Vector2.zero
+				end
 			end
-		end)
-		if ok and asset then
-			if type(asset) == "table" then return asset end
-			if type(asset) == "string" then return asset end
+		else
+			error("no SetIcon")
 		end
-	end
-	-- Fallback: melatonin lucide-luau
-	if not Icons.Module and not Icons.Failed then
-		local ok, m = pcall(function()
-			return loadstring(game:HttpGet("https://cdn.jsdelivr.net/gh/melatonin-rs/lucide-luau@main/src/init.luau"))()
-		end)
-		if ok and type(m) == "table" then Icons.Module = m else Icons.Failed = true end
-	end
-	if Icons.Module then
-		local ok, r = pcall(Icons.Module.get, n, 96)
-		if ok and r then return r end
-	end
-end
-
-local function ApplyIcon(img, res)
-	if type(res) == "table" then
-		img.Image = res.Image or res.Url or ""
-		if res.ImageRectSize then
-			img.ImageRectSize = res.ImageRectSize
-			img.ImageRectOffset = res.ImageRectOffset or Vector2.zero
-		end
-	else
-		img.Image = res
-	end
+	end)
+	return ok
 end
 
 function Blush:SetIconProvider(fn) self.IconProvider = fn end
@@ -765,12 +764,6 @@ function Blush:SetBindList(b)
 	self:_RefreshBinds()
 end
 
-local NotifyColors = {
-	Success = { Color3.fromRGB(90, 230, 150), Color3.fromRGB(40, 170, 110) },
-	Warning = { Color3.fromRGB(255, 205, 90), Color3.fromRGB(235, 140, 50) },
-	Error = { Color3.fromRGB(255, 100, 120), Color3.fromRGB(200, 50, 80) },
-}
-
 function Blush:Notify(o)
 	if not self.Notifications then return end
 	self:_Init()
@@ -793,18 +786,10 @@ function Blush:Notify(o)
 		ClipsDescendants = true,
 		Parent = wrap,
 	})
-	Corner(card, 8)
-	Stroke(card, Theme.Stroke, 1, .45)
+	Corner(card, 7)
+	Stroke(card, Theme.Stroke, 1, .4)
 	List(card, 0)
-	local pal = NotifyColors[o.Type]
-	local function tint(p)
-		if pal then
-			Create("UIGradient", { Color = ColorSequence.new(pal[1], pal[2]), Parent = p })
-		else
-			AccentGradient(p)
-		end
-	end
-	-- Full-width curved top accent (clipped by card corner)
+	-- Always purple accent (Astral-style) — no green/yellow/red type colours
 	local top = Frame({
 		Size = UDim2.new(1, 0, 0, 2),
 		LayoutOrder = 1,
@@ -812,12 +797,12 @@ function Blush:Notify(o)
 		BorderSizePixel = 0,
 		Parent = card,
 	})
-	tint(top)
-	local topShade = Frame({
+	AccentGradient(top)
+	Create("Frame", {
 		Size = UDim2.new(1, 0, 0, 1),
 		LayoutOrder = 2,
 		BackgroundColor3 = Color3.new(0, 0, 0),
-		BackgroundTransparency = .68,
+		BackgroundTransparency = .7,
 		BorderSizePixel = 0,
 		Parent = card,
 	})
@@ -852,7 +837,7 @@ function Blush:Notify(o)
 	end
 	local track = Frame({ Size = UDim2.new(1, 0, 0, 2), LayoutOrder = 4, Parent = card })
 	local fill = Frame({ Size = UDim2.fromScale(1, 1), BackgroundColor3 = WHITE, Parent = track })
-	tint(fill)
+	AccentGradient(fill)
 	local click = Button({ Size = UDim2.fromScale(1, 1), ZIndex = 5, Parent = card })
 
 	local closed = false
@@ -1654,29 +1639,55 @@ function TabMethods:AddSection(o)
 	local S = setmetatable({ Name = o.Name or "", Tab = self, Window = self.Window, Elements = {} }, Container)
 	S.Section = S
 	local wrap = Frame({ Size = UDim2.new(1, 0, 0, 0), AutomaticSize = Enum.AutomaticSize.Y, Parent = parent })
-	local frame = Frame({ Size = UDim2.new(1, 0, 0, 0), AutomaticSize = Enum.AutomaticSize.Y, BackgroundColor3 = Theme.Panel, Parent = wrap })
+	local frame = Frame({ Size = UDim2.new(1, 0, 0, 0), AutomaticSize = Enum.AutomaticSize.Y, BackgroundColor3 = Theme.Panel, ZIndex = 2, Parent = wrap })
 	Corner(frame, 7)
-	Stroke(frame, Theme.Stroke, 1, .75)
-	-- Soft bottom gradient shadow (small, clean — fades out instead of a hard box)
-	local sh = Frame({
+	Stroke(frame, Theme.Stroke, 1, .78)
+	-- Soft elevation: bottom + side gradient fades (no hard boxes)
+	local function softShadow(props, rot, keys)
+		local sh = Frame({
+			BackgroundColor3 = Color3.new(0, 0, 0),
+			BackgroundTransparency = 0,
+			BorderSizePixel = 0,
+			ZIndex = 1,
+			Parent = wrap,
+		})
+		for k, v in pairs(props) do sh[k] = v end
+		Corner(sh, 7)
+		Create("UIGradient", {
+			Rotation = rot,
+			Transparency = NumberSequence.new(keys),
+			Parent = sh,
+		})
+		return sh
+	end
+	-- Bottom glow
+	softShadow({
 		AnchorPoint = Vector2.new(.5, 0),
-		Position = UDim2.new(.5, 0, 1, 0),
-		Size = UDim2.new(1, -10, 0, 7),
-		BackgroundColor3 = Color3.new(0, 0, 0),
-		BackgroundTransparency = .55,
-		BorderSizePixel = 0,
-		ZIndex = 0,
-		Parent = wrap,
+		Position = UDim2.new(.5, 0, 1, -2),
+		Size = UDim2.new(1, -4, 0, 10),
+	}, 90, {
+		NumberSequenceKeypoint.new(0, .4),
+		NumberSequenceKeypoint.new(.45, .75),
+		NumberSequenceKeypoint.new(1, 1),
 	})
-	Corner(sh, 5)
-	Create("UIGradient", {
-		Rotation = 90,
-		Transparency = NumberSequence.new({
-			NumberSequenceKeypoint.new(0, .25),
-			NumberSequenceKeypoint.new(.55, .7),
-			NumberSequenceKeypoint.new(1, 1),
-		}),
-		Parent = sh,
+	-- Soft left edge
+	softShadow({
+		Position = UDim2.fromOffset(-3, 4),
+		Size = UDim2.new(0, 8, 1, -8),
+	}, 0, {
+		NumberSequenceKeypoint.new(0, 1),
+		NumberSequenceKeypoint.new(.5, .85),
+		NumberSequenceKeypoint.new(1, .55),
+	})
+	-- Soft right edge
+	softShadow({
+		AnchorPoint = Vector2.new(1, 0),
+		Position = UDim2.new(1, 3, 0, 4),
+		Size = UDim2.new(0, 8, 1, -8),
+	}, 0, {
+		NumberSequenceKeypoint.new(0, .55),
+		NumberSequenceKeypoint.new(.5, .85),
+		NumberSequenceKeypoint.new(1, 1),
 	})
 	List(frame, 0)
 	local named = S.Name ~= ""
@@ -1754,10 +1765,12 @@ function Window:OpenPopup(anchor, size, onClose)
 	local as = anchor.AbsoluteSize / sc
 	local ovs = ov.AbsoluteSize / sc
 	local w, h = size.X.Offset, size.Y.Offset
-	-- Center the popup horizontally under the anchor
-	local x = math.clamp(ap.X + (as.X - w) / 2, 4, math.max(4, ovs.X - w - 4))
-	local y = ap.Y + as.Y + 5
-	if y + h > ovs.Y - 4 then y = math.max(4, ap.Y - h - 5) end
+	-- Align left edge with the trigger (dropdown sits directly under the control)
+	local x = math.clamp(ap.X, 4, math.max(4, ovs.X - w - 4))
+	-- If popup is wider than anchor, still keep left-aligned; if it would overflow right, shift left
+	if x + w > ovs.X - 4 then x = math.max(4, ovs.X - w - 4) end
+	local y = ap.Y + as.Y + 4
+	if y + h > ovs.Y - 4 then y = math.max(4, ap.Y - h - 4) end
 	local pop = Frame({
 		Position = UDim2.fromOffset(x, y),
 		Size = UDim2.fromOffset(w, 0),
@@ -1829,28 +1842,46 @@ function Window:AddTab(o)
 	o = o or {}
 	local Tab = setmetatable({ Name = o.Name or "Tab", Sections = {}, Window = self, Index = #self.Tabs + 1 }, TabMethods)
 	local btn = Button({ Size = UDim2.fromOffset(32, 30), Parent = self.TabHolder, LayoutOrder = Tab.Index })
-	local img = Create("ImageLabel", { BackgroundTransparency = 1, AnchorPoint = Vector2.new(.5, .5), Position = UDim2.fromScale(.5, .5),
-		Size = UDim2.fromOffset(20, 20), ImageColor3 = WHITE, ImageTransparency = .5, Parent = btn })
+	-- Molto material icons render as TextLabel font ligatures
+	local img = Label({
+		BackgroundTransparency = 1,
+		AnchorPoint = Vector2.new(.5, .5),
+		Position = UDim2.fromScale(.5, .5),
+		Size = UDim2.fromOffset(20, 20),
+		TextSize = 18,
+		TextColor3 = WHITE,
+		TextTransparency = .5,
+		TextXAlignment = Enum.TextXAlignment.Center,
+		TextYAlignment = Enum.TextYAlignment.Center,
+		Text = "",
+		Parent = btn,
+	})
 	local scale = Create("UIScale", { Parent = img })
-	local fallback = Label({ Text = Tab.Name:sub(1, 1):upper(), FontFace = Fonts.Bold, TextSize = 15, TextColor3 = WHITE, TextTransparency = .5,
-		TextXAlignment = Enum.TextXAlignment.Center, Size = UDim2.fromScale(1, 1), Parent = btn })
+	local fallback = Label({
+		Text = Tab.Name:sub(1, 1):upper(),
+		FontFace = Fonts.Bold,
+		TextSize = 15,
+		TextColor3 = WHITE,
+		TextTransparency = .5,
+		TextXAlignment = Enum.TextXAlignment.Center,
+		Size = UDim2.fromScale(1, 1),
+		Parent = btn,
+	})
 	task.spawn(function()
-		local res = ResolveIcon(o.Icon or Tab.Name)
-		if res then
-			ApplyIcon(img, res)
+		if SetMoltoIcon(img, o.Icon or Tab.Name) then
 			fallback.Visible = false
 		end
 	end)
 	Tab.Button = btn
 	Tab.SetIcon = function(active)
 		local t = active and 0 or .5
-		Tween(img, { ImageTransparency = t }, .25)
+		Tween(img, { TextTransparency = t }, .25)
 		Tween(fallback, { TextTransparency = t }, .25)
 		Tween(scale, { Scale = active and 1.12 or 1 }, .35, Back)
 	end
 	btn.MouseEnter:Connect(function()
 		if self.ActiveTab ~= Tab then
-			Tween(img, { ImageTransparency = .2 }, .15)
+			Tween(img, { TextTransparency = .2 }, .15)
 			Tween(scale, { Scale = 1.08 }, .2, Back)
 		end
 	end)
@@ -2049,15 +2080,52 @@ function Blush:CreateWindow(cfg)
 	local header = Frame({ Size = UDim2.new(1, 0, 0, HEADER_H), BackgroundColor3 = WHITE, ClipsDescendants = true, Parent = main })
 	AccentGradient(header, 0)
 	W.Header = header
-	local sheen = Frame({ Size = UDim2.new(0, 120, 4, 0), Position = UDim2.new(-.3, 0, -1, 0), Rotation = 20, BackgroundColor3 = WHITE, Parent = header })
-	Create("UIGradient", { Transparency = NumberSequence.new({ NumberSequenceKeypoint.new(0, 1), NumberSequenceKeypoint.new(.5, .86), NumberSequenceKeypoint.new(1, 1) }), Parent = sheen })
-	TweenService:Create(sheen, TweenInfo.new(7, Linear, Enum.EasingDirection.Out, -1), { Position = UDim2.new(1.2, 0, -1, 0) }):Play()
+	-- Weaving white sheen lines across the purple header (Astral-style)
+	for si, conf in ipairs({
+		{ h = 3, rot = 18, t = 6.5, y = .25, delay = 0 },
+		{ h = 2, rot = -12, t = 9, y = .55, delay = 2.2 },
+	}) do
+		local sheen = Frame({
+			Size = UDim2.new(0, 140, 0, conf.h),
+			Position = UDim2.new(-.35, 0, conf.y, 0),
+			Rotation = conf.rot,
+			BackgroundColor3 = WHITE,
+			BackgroundTransparency = .15,
+			Parent = header,
+		})
+		Create("UIGradient", {
+			Transparency = NumberSequence.new({
+				NumberSequenceKeypoint.new(0, 1),
+				NumberSequenceKeypoint.new(.35, .55),
+				NumberSequenceKeypoint.new(.5, .35),
+				NumberSequenceKeypoint.new(.65, .55),
+				NumberSequenceKeypoint.new(1, 1),
+			}),
+			Parent = sheen,
+		})
+		task.delay(conf.delay, function()
+			TweenService:Create(sheen, TweenInfo.new(conf.t, Linear, Enum.EasingDirection.Out, -1), {
+				Position = UDim2.new(1.25, 0, conf.y, 0),
+			}):Play()
+		end)
+	end
 	local rng = Random.new(7)
-	for i = 1, 16 do
-		local star = Label({ Text = "★", TextSize = rng:NextInteger(8, 15), TextColor3 = Color3.fromRGB(255, 235, 255), TextTransparency = rng:NextNumber(.05, .5),
-			Position = UDim2.new(.12 + (i / 16) * .5, rng:NextInteger(-8, 8), rng:NextNumber(.1, .7), 0), Size = UDim2.fromOffset(16, 16),
-			TextXAlignment = Enum.TextXAlignment.Center, Rotation = rng:NextInteger(-25, 25), Parent = header })
-		TweenService:Create(star, TweenInfo.new(rng:NextNumber(1.2, 2.8), Sine, Enum.EasingDirection.InOut, -1, true, rng:NextNumber(0, 1.5)), { TextTransparency = .9, Rotation = star.Rotation + 20 }):Play()
+	for i = 1, 18 do
+		local star = Label({
+			Text = "★",
+			TextSize = rng:NextInteger(7, 14),
+			TextColor3 = Color3.fromRGB(255, 240, 255),
+			TextTransparency = rng:NextNumber(.1, .55),
+			Position = UDim2.new(.1 + (i / 18) * .55, rng:NextInteger(-6, 6), rng:NextNumber(.12, .72), 0),
+			Size = UDim2.fromOffset(14, 14),
+			TextXAlignment = Enum.TextXAlignment.Center,
+			Rotation = rng:NextInteger(-20, 20),
+			Parent = header,
+		})
+		TweenService:Create(star, TweenInfo.new(rng:NextNumber(1.4, 3), Sine, Enum.EasingDirection.InOut, -1, true, rng:NextNumber(0, 1.2)), {
+			TextTransparency = .92,
+			Rotation = star.Rotation + 18,
+		}):Play()
 	end
 	Label({ Text = W.Name, FontFace = Fonts.Bold, TextSize = 17, TextColor3 = Color3.fromRGB(252, 222, 255),
 		Position = UDim2.fromOffset(18, 0), Size = UDim2.new(0, 120, 1, 0), Parent = header })
@@ -2085,12 +2153,21 @@ function Blush:CreateWindow(cfg)
 		Text = string.format("%s <font color=\"rgb(120,127,146)\">/ %s</font>", lp.Name, lp.DisplayName), Parent = footer })
 
 	local sbtn = Button({ AnchorPoint = Vector2.new(1, .5), Position = UDim2.new(1, -12, .5, 0), Size = UDim2.fromOffset(30, 30), Parent = footer })
-	local sicon = Create("ImageLabel", { BackgroundTransparency = 1, AnchorPoint = Vector2.new(.5, .5), Position = UDim2.fromScale(.5, .5),
-		Size = UDim2.fromOffset(18, 18), ImageColor3 = Theme.SubText, Parent = sbtn })
-	local sfall = Label({ Text = "?", FontFace = Fonts.Bold, TextXAlignment = Enum.TextXAlignment.Center, TextColor3 = Theme.SubText, Size = UDim2.fromScale(1, 1), Parent = sbtn })
+	local sicon = Label({
+		BackgroundTransparency = 1,
+		AnchorPoint = Vector2.new(.5, .5),
+		Position = UDim2.fromScale(.5, .5),
+		Size = UDim2.fromOffset(18, 18),
+		TextSize = 16,
+		TextColor3 = Theme.SubText,
+		TextXAlignment = Enum.TextXAlignment.Center,
+		TextYAlignment = Enum.TextYAlignment.Center,
+		Text = "",
+		Parent = sbtn,
+	})
+	local sfall = Label({ Text = "⌕", FontFace = Fonts.Bold, TextXAlignment = Enum.TextXAlignment.Center, TextColor3 = Theme.SubText, Size = UDim2.fromScale(1, 1), Parent = sbtn })
 	task.spawn(function()
-		local res = ResolveIcon("search")
-		if res then ApplyIcon(sicon, res) sfall.Visible = false end
+		if SetMoltoIcon(sicon, "search") then sfall.Visible = false end
 	end)
 	local sbox = Input({ AnchorPoint = Vector2.new(1, .5), Position = UDim2.new(1, -50, .5, 0), Size = UDim2.fromOffset(0, 26),
 		BackgroundTransparency = 0, BackgroundColor3 = Theme.Element, PlaceholderText = "Search...", PlaceholderColor3 = Theme.SubText,
@@ -2098,15 +2175,15 @@ function Blush:CreateWindow(cfg)
 	Corner(sbox, 5) Pad(sbox, 0, 0, 10, 10)
 	local sst = Stroke(sbox, Theme.Stroke, 1)
 	local sopen = false
-	sbtn.MouseEnter:Connect(function() Tween(sicon, { ImageColor3 = Theme.Text }, .15) Tween(sfall, { TextColor3 = Theme.Text }, .15) end)
+	sbtn.MouseEnter:Connect(function() Tween(sicon, { TextColor3 = Theme.Text }, .15) Tween(sfall, { TextColor3 = Theme.Text }, .15) end)
 	sbtn.MouseLeave:Connect(function()
 		local c = sopen and Theme.Accent or Theme.SubText
-		Tween(sicon, { ImageColor3 = c }, .15) Tween(sfall, { TextColor3 = c }, .15)
+		Tween(sicon, { TextColor3 = c }, .15) Tween(sfall, { TextColor3 = c }, .15)
 	end)
 	sbtn.MouseButton1Click:Connect(function()
 		sopen = not sopen
 		local c = sopen and Theme.Accent or Theme.SubText
-		Tween(sicon, { ImageColor3 = c }, .2) Tween(sfall, { TextColor3 = c }, .2)
+		Tween(sicon, { TextColor3 = c }, .2) Tween(sfall, { TextColor3 = c }, .2)
 		if sopen then
 			sbox.Visible = true
 			Tween(sbox, { Size = UDim2.fromOffset(210, 26) }, .35)
