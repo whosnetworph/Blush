@@ -2585,36 +2585,32 @@ function Blush:CreateWindow(cfg)
 	AccentGradient(header, 0)
 	W.Header = header
 	-- Big flowing wave: one wide translucent ribbon (crests slide off the top and bottom of the header)
-	-- with a fainter echo ribbon behind it. Each ribbon is built once as a long strip of overlapping
-	-- segments inside a CanvasGroup, so overlaps never show and the curve stays smooth, and sliding the
-	-- strip by exactly one wavelength loops it seamlessly (one tween per ribbon, no per-frame maths).
+	-- with a fainter echo ribbon behind it. Each ribbon is a strip of thin upright columns (no rotated
+	-- frames, which is what made the old versions look jagged) inside a CanvasGroup, so overlaps never
+	-- show. The wavelength is snapped to a whole number of columns, so sliding the strip by exactly one
+	-- wavelength loops it seamlessly: one tween per ribbon and no per-frame maths.
 	-- cfg.Wave = false turns it off; cfg.Wave = { Color, Amplitude, Thickness, Opacity, Speed } customises it.
 	local TAU = math.pi * 2
 	local Wpx, midY = size.X, HEADER_H / 2
+	local COL = 3 -- column width in px; neighbouring columns differ by well under 1px in height
 	local function addWave(def)
 		local group = Make("CanvasGroup", {
 			BackgroundTransparency = 1, BorderSizePixel = 0, Size = UDim2.fromScale(1, 1),
 			GroupTransparency = def.alpha, Parent = header,
 		})
-		local period = def.period
-		local total = Wpx + period
-		local strip = Frame({ Size = UDim2.new(0, total, 1, 0), Position = UDim2.fromOffset(def.dir > 0 and 0 or -period, 0), Parent = group })
-		local count = math.ceil(total / def.step)
-		local step = total / count
-		local function yAt(x)
-			return midY + math.sin(x / period * TAU + def.phase) * def.amp
-		end
+		local perCols = math.max(8, math.floor(def.period / COL + .5))
+		local period = perCols * COL
+		local count = math.ceil((Wpx + period) / COL)
+		local strip = Frame({ Size = UDim2.new(0, count * COL, 1, 0), Position = UDim2.fromOffset(def.dir > 0 and 0 or -period, 0), Parent = group })
 		for i = 0, count - 1 do
-			local x0, x1 = i * step, (i + 1) * step
-			local y0, y1 = yAt(x0), yAt(x1)
-			local dx, dy = x1 - x0, y1 - y0
+			local xc = (i + .5) * COL
+			local p = xc / period * TAU + def.phase
 			-- thickness swells and thins along the wave (periodic, so the loop stays seamless)
-			local thick = def.thick * (.72 + .28 * math.sin((x0 + x1) / 2 / period * TAU + def.phase + 1.9))
+			local thick = def.thick * (.72 + .28 * math.sin(p + 1.9))
 			Frame({
 				AnchorPoint = Vector2.new(.5, .5),
-				Position = UDim2.fromOffset((x0 + x1) / 2, (y0 + y1) / 2),
-				Size = UDim2.fromOffset(math.sqrt(dx * dx + dy * dy) + 2.5, thick),
-				Rotation = math.deg(math.atan2(dy, dx)),
+				Position = UDim2.fromOffset(xc, midY + math.sin(p) * def.amp),
+				Size = UDim2.fromOffset(COL + 1, thick),
 				BackgroundColor3 = def.color,
 				Parent = strip,
 			})
@@ -2632,9 +2628,9 @@ function Blush:CreateWindow(cfg)
 		local thick = wc.Thickness or 18
 		-- echo ribbon first so the main one sits on top of it
 		addWave({ period = Wpx * .55, amp = amp * .6, thick = thick * .6, speed = 30 * speed, phase = 2.1,
-			alpha = .88, color = color, dir = -1, step = 4 })
+			alpha = .88, color = color, dir = -1 })
 		addWave({ period = Wpx * .95, amp = amp, thick = thick, speed = 46 * speed, phase = 0,
-			alpha = wc.Opacity or .5, color = color, dir = 1, step = 4 })
+			alpha = wc.Opacity or .5, color = color, dir = 1 })
 	end
 	local rng = Random.new(7)
 	for i = 1, 18 do
@@ -2643,7 +2639,7 @@ function Blush:CreateWindow(cfg)
 			TextSize = rng:NextInteger(7, 14),
 			TextColor3 = Color3.fromRGB(255, 240, 255),
 			TextTransparency = rng:NextNumber(.1, .55),
-			Position = UDim2.new(.1 + (i / 18) * .55, rng:NextInteger(-6, 6), rng:NextNumber(.12, .72), 0),
+			Position = UDim2.new(.26 + (i / 18) * .46, rng:NextInteger(-6, 6), rng:NextNumber(.12, .72), 0),
 			Size = UDim2.fromOffset(14, 14),
 			TextXAlignment = Enum.TextXAlignment.Center,
 			Rotation = rng:NextInteger(-20, 20),
