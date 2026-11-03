@@ -109,10 +109,10 @@ local function AccentGradient(parent, rotation)
 	return g
 end
 
--- Full-width top accent bar; must sit after Frame + AccentGradient (locals resolve at definition)
+-- Full-width top accent (Create only — avoids Frame local-order issues)
 local function EngravedLine(parent, thickness)
 	thickness = thickness or 2
-	local line = Frame({
+	local line = Create("Frame", {
 		Size = UDim2.new(1, 0, 0, thickness),
 		BackgroundColor3 = WHITE,
 		BorderSizePixel = 0,
@@ -120,7 +120,7 @@ local function EngravedLine(parent, thickness)
 		Parent = parent,
 	})
 	AccentGradient(line)
-	local shade = Frame({
+	Create("Frame", {
 		Position = UDim2.fromOffset(0, thickness),
 		Size = UDim2.new(1, 0, 0, 1),
 		BackgroundColor3 = Color3.new(0, 0, 0),
@@ -129,7 +129,7 @@ local function EngravedLine(parent, thickness)
 		ZIndex = 2,
 		Parent = parent,
 	})
-	return line, shade
+	return line
 end
 
 local function Press(btn)
