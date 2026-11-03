@@ -122,15 +122,18 @@ local function EngravedLine(parent, thickness)
 		Parent = parent,
 	})
 	AccentGradient(line)
-	Create("Frame", {
+	-- soft accent glow bleeding down from the line
+	local glow = Create("Frame", {
 		Position = UDim2.fromOffset(0, thickness),
-		Size = UDim2.new(1, 0, 0, 1),
-		BackgroundColor3 = Color3.new(0, 0, 0),
-		BackgroundTransparency = .72,
+		Size = UDim2.new(1, 0, 0, 9),
+		BackgroundColor3 = WHITE,
 		BorderSizePixel = 0,
 		ZIndex = 4,
 		Parent = parent,
 	})
+	local gg = Create("UIGradient", { Rotation = 90, Color = ColorSequence.new(Theme.Accent, Theme.Accent2),
+		Transparency = NumberSequence.new(.84, 1), Parent = glow })
+	table.insert(Blush.AccentObjects, gg)
 	return line
 end
 
@@ -275,7 +278,7 @@ local IconAlias = {
 	colors = "palette", colours = "palette", palette = "palette",
 	settings = "settings", gear = "settings",
 	misc = "tune", sliders = "tune", ["sliders-horizontal"] = "tune", tune = "tune",
-	search = "search", combat = "swords", player = "person",
+	search = "search", combat = "swords", player = "person", players = "group", users = "group", group = "group",
 }
 
 local function EnsureMolto()
@@ -592,14 +595,14 @@ function Blush:_Init()
 	end)
 
 	self.NotifHolder = Frame({
-		AnchorPoint = Vector2.new(0, 1),
-		Position = UDim2.new(0, 16, 1, -16),
-		Size = UDim2.new(0, 310, 0, 0),
+		AnchorPoint = Vector2.new(0, 0),
+		Position = UDim2.fromOffset(16, 62),
+		Size = UDim2.new(0, 276, 0, 0),
 		AutomaticSize = Enum.AutomaticSize.Y,
 		Parent = gui,
 	})
 	local nl = List(self.NotifHolder, 8)
-	nl.VerticalAlignment = Enum.VerticalAlignment.Bottom
+	nl.VerticalAlignment = Enum.VerticalAlignment.Top
 	nl.HorizontalAlignment = Enum.HorizontalAlignment.Left
 	self:_BuildHUD()
 end
@@ -608,54 +611,50 @@ function Blush:_BuildHUD()
 	local gui = self.Gui
 	local lp = Players.LocalPlayer
 
-	-- Locked top-right. CanvasGroup clips the accent into the rounded shape.
+	-- CanvasGroup clips children to the rounded corners, so the accent line is
+	-- cut into the watermark's shape (engraved) instead of sitting on top of it.
 	local wm = Make("CanvasGroup", {
 		Name = "Watermark",
 		BorderSizePixel = 0,
-		AnchorPoint = Vector2.new(1, 0),
-		Position = UDim2.new(1, -16, 0, 16),
-		Size = UDim2.fromOffset(0, 34),
+		Position = UDim2.fromOffset(16, 16),
+		Size = UDim2.fromOffset(0, 36),
 		AutomaticSize = Enum.AutomaticSize.X,
 		BackgroundColor3 = Theme.Panel,
 		Parent = gui,
 	})
 	Corner(wm, 8)
-	Stroke(wm, Theme.Stroke, 1, .4)
-	EngravedLine(wm, 3)
+	Stroke(wm, Theme.Stroke, 1, .45)
+	EngravedLine(wm, 2)
 	local row = Frame({
-		Position = UDim2.fromOffset(0, 3),
-		Size = UDim2.fromOffset(0, 31),
+		Position = UDim2.fromOffset(0, 2),
+		Size = UDim2.fromOffset(0, 34),
 		AutomaticSize = Enum.AutomaticSize.X,
 		Parent = wm,
 	})
-	local rl = List(row, 8, Enum.FillDirection.Horizontal)
+	local rl = List(row, 10, Enum.FillDirection.Horizontal)
 	rl.VerticalAlignment = Enum.VerticalAlignment.Center
-	Pad(row, 2, 0, 12, 12)
+	Pad(row, 0, 0, 14, 14)
 
 	local order = 0
-	local function seg(text, bold, fixedW)
+	local function seg(text, bold)
 		order += 1
-		local props = {
+		return Label({
 			Text = text,
 			FontFace = bold and Fonts.Bold or Fonts.Medium,
-			TextSize = bold and 13 or 12,
+			TextSize = 13,
 			TextColor3 = bold and WHITE or Theme.Text,
-			Size = UDim2.fromOffset(fixedW or 0, 24),
+			Size = UDim2.fromOffset(0, 24),
+			AutomaticSize = Enum.AutomaticSize.X,
 			LayoutOrder = order,
 			Parent = row,
-		}
-		if not fixedW then props.AutomaticSize = Enum.AutomaticSize.X end
-		if fixedW then
-			props.TextXAlignment = Enum.TextXAlignment.Center
-		end
-		return Label(props)
+		})
 	end
 	local function sep()
 		order += 1
 		Frame({
-			Size = UDim2.fromOffset(1, 12),
-			BackgroundColor3 = Theme.Stroke,
-			BackgroundTransparency = .25,
+			Size = UDim2.fromOffset(1, 14),
+			BackgroundColor3 = Color3.fromRGB(96, 103, 124),
+			BackgroundTransparency = .35,
 			LayoutOrder = order,
 			Parent = row,
 		})
@@ -663,18 +662,17 @@ function Blush:_BuildHUD()
 	local title = seg("Blush", true)
 	AccentGradient(title)
 	sep()
-	-- Name can grow; fps/ping/time use fixed widths so FPS spikes don't resize the bar
 	local nameLbl = seg(lp and lp.Name or "player")
 	sep()
-	local fpsLbl = seg("000 fps", false, 58)
+	local fpsLbl = seg("0fps")
 	sep()
-	local pingLbl = seg("000 ms", false, 52)
+	local pingLbl = seg("0 ms")
 	sep()
-	local timeLbl = seg("00:00", false, 40)
+	local timeLbl = seg("00:00")
 	self.WatermarkFrame, self.WatermarkTitle = wm, title
 	self.WatermarkName = nameLbl
 	self.HideIdentity = false
-	-- Watermark is locked top-right (not draggable)
+	Draggable(wm, wm, true)
 
 	local function maskName(s)
 		s = tostring(s or "")
@@ -702,7 +700,7 @@ function Blush:_BuildHUD()
 	local function refresh()
 		pcall(function() ping = math.floor(Stats.Network.ServerStatsItem["Data Ping"]:GetValue() + .5) end)
 		local t = os.date("*t")
-		fpsLbl.Text = fps .. " fps"
+		fpsLbl.Text = fps .. "fps"
 		pingLbl.Text = ping .. " ms"
 		timeLbl.Text = Pct(t.hour) .. ":" .. Pct(t.min)
 	end
@@ -725,6 +723,7 @@ function Blush:_RefreshBinds() end
 function Blush:SetWatermark(b)
 	self:_Init()
 	self.WatermarkFrame.Visible = b
+	if self.NotifHolder then self.NotifHolder.Position = UDim2.fromOffset(16, b and 62 or 16) end
 end
 function Blush:SetWatermarkTitle(t)
 	self:_Init()
@@ -740,7 +739,7 @@ function Blush:Notify(o)
 	local title, content, dur = o.Title or "Blush", o.Content or o.Text or "", o.Duration or 4
 
 	local hasBody = content ~= ""
-	local h = hasBody and 59 or 43
+	local h = hasBody and 62 or 44
 	local wrap = Frame({
 		Size = UDim2.new(1, 0, 0, 0),
 		BackgroundTransparency = 1,
@@ -751,20 +750,20 @@ function Blush:Notify(o)
 		BorderSizePixel = 0,
 		BackgroundColor3 = Theme.Panel,
 		GroupTransparency = 1,
-		Position = UDim2.fromOffset(0, 16),
+		Position = UDim2.fromOffset(-24, 0),
 		Size = UDim2.new(1, 0, 0, h),
 		ClipsDescendants = true,
 		Parent = wrap,
 	})
-	Corner(card, 7)
-	Stroke(card, Theme.Stroke, 1, .35)
-	EngravedLine(card, 3)
+	Corner(card, 8)
+	Stroke(card, Theme.Stroke, 1, .45)
+	EngravedLine(card, 2)
 	Label({
 		Text = title,
 		FontFace = Fonts.Bold,
 		TextSize = 13,
-		Position = UDim2.fromOffset(12, hasBody and 9 or 12),
-		Size = UDim2.new(1, -24, 0, 16),
+		Position = UDim2.fromOffset(14, hasBody and 11 or 14),
+		Size = UDim2.new(1, -28, 0, 16),
 		Parent = card,
 	})
 	if hasBody then
@@ -774,26 +773,29 @@ function Blush:Notify(o)
 			TextSize = 12,
 			TextColor3 = Theme.SubText,
 			TextTruncate = Enum.TextTruncate.AtEnd,
-			Position = UDim2.fromOffset(12, 27),
-			Size = UDim2.new(1, -24, 0, 16),
+			Position = UDim2.fromOffset(14, 31),
+			Size = UDim2.new(1, -28, 0, 16),
 			Parent = card,
 		})
 	end
 	local track = Frame({
 		AnchorPoint = Vector2.new(0, 1),
 		Position = UDim2.new(0, 0, 1, 0),
-		Size = UDim2.new(1, 0, 0, 2),
+		Size = UDim2.new(1, 0, 0, 3),
 		Parent = card,
 	})
 	local fill = Frame({ Size = UDim2.fromScale(1, 1), BackgroundColor3 = WHITE, Parent = track })
 	AccentGradient(fill)
+	local pglow = Frame({ AnchorPoint = Vector2.new(0, 1), Position = UDim2.fromScale(0, 0), Size = UDim2.new(1, 0, 0, 8), BackgroundColor3 = WHITE, Parent = fill })
+	table.insert(Blush.AccentObjects, Create("UIGradient", { Rotation = 90, Color = ColorSequence.new(Theme.Accent, Theme.Accent2),
+		Transparency = NumberSequence.new(1, .82), Parent = pglow }))
 	local click = Button({ Size = UDim2.fromScale(1, 1), BackgroundTransparency = 1, ZIndex = 5, Parent = card })
 
 	local closed = false
 	local function close()
 		if closed then return end
 		closed = true
-		Tween(card, { GroupTransparency = 1, Position = UDim2.fromOffset(0, 10) }, .25)
+		Tween(card, { GroupTransparency = 1, Position = UDim2.fromOffset(-24, 0) }, .25)
 		Tween(wrap, { Size = UDim2.new(1, 0, 0, 0) }, .22)
 		task.wait(.26)
 		if wrap.Parent then wrap:Destroy() end
@@ -1180,6 +1182,14 @@ function Container:AddSlider(o)
 	Stroke(edit, Theme.Stroke, 1)
 	local track = Frame({ Position = UDim2.fromOffset(0, 27), Size = UDim2.new(1, 0, 0, 4), BackgroundColor3 = Theme.Element, Parent = row })
 	Corner(track, 2)
+	-- soft glow layers sit behind the fill and follow it
+	local glows = {}
+	for _, gl in ipairs({ { 12, .9 }, { 7, .8 } }) do
+		local g = Frame({ AnchorPoint = Vector2.new(0, .5), Position = UDim2.new(0, -2, .5, 0), Size = UDim2.new(0, 0, 0, gl[1]),
+			BackgroundColor3 = WHITE, BackgroundTransparency = gl[2], Parent = track })
+		Corner(g, 6) AccentGradient(g)
+		table.insert(glows, { g, gl[1] })
+	end
 	local fill = Frame({ Size = UDim2.fromScale(0, 1), BackgroundColor3 = WHITE, Parent = track })
 	Corner(fill, 2) AccentGradient(fill)
 	local knob = Frame({ AnchorPoint = Vector2.new(.5, .5), Position = UDim2.fromScale(0, .5), Size = UDim2.fromOffset(0, 0), BackgroundColor3 = WHITE, Parent = track })
@@ -1200,6 +1210,9 @@ function Container:AddSlider(o)
 		self.Value = v
 		local pct = (v - self.Min) / math.max(self.Max - self.Min, 1e-9)
 		Tween(fill, { Size = UDim2.fromScale(pct, 1) }, .12, Sine)
+		for _, g in ipairs(glows) do
+			Tween(g[1], { Size = UDim2.new(pct, pct > 0 and 4 or 0, 0, g[2]) }, .12, Sine)
+		end
 		Tween(knob, { Position = UDim2.fromScale(pct, .5) }, .12, Sine)
 		val.Text = fmt(v)
 		if self.Flag then Blush.Flags[self.Flag] = v end
@@ -1365,7 +1378,7 @@ function Container:AddDropdown(o)
 	Corner(box, 5)
 	local st = Stroke(box, Theme.Stroke, 1)
 	Press(box)
-	local txt = Label({ Position = UDim2.fromOffset(28, 0), Size = UDim2.new(1, -56, 1, 0), TextColor3 = Theme.SubText, TextXAlignment = Enum.TextXAlignment.Center, TextTruncate = Enum.TextTruncate.AtEnd, Parent = box })
+	local txt = Label({ Position = UDim2.fromOffset(11, 0), Size = UDim2.new(1, -36, 1, 0), TextColor3 = Theme.SubText, TextTruncate = Enum.TextTruncate.AtEnd, Parent = box })
 	local arrow = Label({
 		Text = o.Multi and "+" or "▼",
 		FontFace = Fonts.Medium,
@@ -1445,7 +1458,7 @@ function Container:AddDropdown(o)
 			h = searchH + count * itemH + padH
 		end
 		local sc = math.max(window.Scale.Scale, .01)
-		local popW = math.max(box.AbsoluteSize.X / sc, 80)
+		local popW = math.max(box.AbsoluteSize.X / sc, 60)
 		local pop = window:OpenPopup(box, UDim2.fromOffset(popW, h), function()
 			D.IsOpen = false
 			Tween(arrow, { Rotation = 0 }, .2)
@@ -1462,7 +1475,6 @@ function Container:AddDropdown(o)
 				PlaceholderText = "Search...",
 				PlaceholderColor3 = Theme.SubText,
 				TextSize = 12,
-				TextXAlignment = Enum.TextXAlignment.Center,
 				Parent = pop,
 			})
 			Corner(sb, 4) Pad(sb, 0, 0, 9, 9)
@@ -1480,7 +1492,7 @@ function Container:AddDropdown(o)
 			ElasticBehavior = Enum.ElasticBehavior.Never,
 			Parent = pop,
 		})
-		List(lst, 0) Pad(lst, 0, 0, 5, 5)
+		List(lst, 0) Pad(lst, 0, 0, 4, 4)
 		-- Mark so wheel scroll over the list doesn't close the popup
 		pop:SetAttribute("IsDropdown", true)
 		lst:SetAttribute("IsDropdownList", true)
@@ -1502,13 +1514,13 @@ function Container:AddDropdown(o)
 						Size = UDim2.new(1, 0, 0, itemH),
 						Text = tostring(v),
 						TextSize = 13,
-						TextXAlignment = Enum.TextXAlignment.Center,
+						TextXAlignment = Enum.TextXAlignment.Left,
 						BackgroundColor3 = Theme.Element,
 						BackgroundTransparency = 1,
 						LayoutOrder = i,
 						Parent = lst,
 					})
-					Corner(b, 4)
+					Corner(b, 4) Pad(b, 0, 0, 7, 0)
 					b.MouseEnter:Connect(function() Tween(b, { BackgroundTransparency = .4 }, .1) end)
 					b.MouseLeave:Connect(function() Tween(b, { BackgroundTransparency = 1 }, .1) end)
 					b.MouseButton1Click:Connect(function()
@@ -1660,18 +1672,19 @@ function TabMethods:AddSection(o)
 	local frame = Frame({ Size = UDim2.new(1, 0, 0, 0), AutomaticSize = Enum.AutomaticSize.Y, BackgroundColor3 = Theme.Panel, ZIndex = 2, Parent = wrap })
 	Corner(frame, 7)
 	Stroke(frame, Theme.Stroke, 1, .78)
-	-- Longer soft shadow that meets the section edges (rounded, fading outward)
-	for i = 1, 12 do
-		local t = i / 12
+	-- Soft bottom-only shadow: stacked rounded layers tucked behind the section.
+	-- Each layer is a little deeper and narrower, so the shadow fades out in a curve
+	-- under the bottom edge and never shows on the sides or top.
+	for i = 1, 5 do
 		local layer = Frame({
-			Position = UDim2.new(0, -i, 0, -i + 2),
-			Size = UDim2.new(1, i * 2, 1, i * 2 + 4),
+			Position = UDim2.new(0, i * 2, 0, 0),
+			Size = UDim2.new(1, -i * 4, 1, i),
 			BackgroundColor3 = Color3.new(0, 0, 0),
-			BackgroundTransparency = 0.82 + t * 0.16,
+			BackgroundTransparency = .992,
 			ZIndex = 1,
 			Parent = wrap,
 		})
-		Corner(layer, 7 + math.floor(i * 0.6))
+		Corner(layer, 7 + i)
 	end
 	List(frame, 0)
 	local named = S.Name ~= ""
@@ -1700,7 +1713,7 @@ function TabMethods:AddSection(o)
 	end
 	local content = Frame({ Size = UDim2.new(1, 0, 0, 0), AutomaticSize = Enum.AutomaticSize.Y, LayoutOrder = 3, Parent = frame })
 	local inner = Frame({ Size = UDim2.new(1, 0, 0, 0), AutomaticSize = Enum.AutomaticSize.Y, Parent = content })
-	List(inner, 9) Pad(inner, named and 10 or 2, 14, 14, 14)
+	List(inner, 10) Pad(inner, named and 12 or 2, 16, 16, 16)
 	S.Frame, S.Wrap, S.Inner = frame, wrap, inner
 	table.insert(self.Sections, S)
 	return S
@@ -1724,7 +1737,7 @@ function TabMethods:Select()
 	self.Page.GroupTransparency = 1
 	self.Page.Position = UDim2.fromOffset(18 * dir, 0)
 	Tween(self.Page, { GroupTransparency = 0, Position = UDim2.fromOffset(0, 0) }, .4)
-	for _, s in ipairs(self.Sections) do s.Collapse:Refresh() end
+	for _, s in ipairs(self.Sections) do if s.Collapse then s.Collapse:Refresh() end end
 	if self._UpdateCanvas then task.defer(self._UpdateCanvas) end
 	task.defer(function() w:_MoveIndicator(self, prev == nil) end)
 	task.delay(.05, function() if w.ActiveTab == self then w:_MoveIndicator(self, true) end end)
@@ -1751,17 +1764,16 @@ function Window:OpenPopup(anchor, size, onClose)
 	blocker.MouseButton1Click:Connect(function() self:ClosePopup() end)
 	blocker.MouseButton2Click:Connect(function() self:ClosePopup() end)
 	local h = size.Y.Offset
-	local gap = 6 -- space between trigger and list
+	local gap = 4 -- space between trigger and list
 	local function place()
 		local sc = math.max(self.Scale.Scale, .01)
 		local ap = (anchor.AbsolutePosition - ov.AbsolutePosition) / sc
 		local as = anchor.AbsoluteSize / sc
 		local ovs = ov.AbsoluteSize / sc
-		-- Span the full trigger width, left edges locked
-		local w = math.max(as.X, size.X.Offset, 80)
-		local x = ap.X
-		if x + w > ovs.X - 2 then x = math.max(2, ovs.X - w - 2) end
-		x = math.max(2, x)
+		-- Popup spans the full width of its trigger (wider popups right-align to it)
+		local w = math.max(as.X > 1 and as.X or 0, size.X.Offset, 60)
+		local x = ap.X + as.X - w
+		x = math.clamp(x, 2, math.max(2, ovs.X - w - 2))
 		local y = ap.Y + as.Y + gap
 		if y + h > ovs.Y - 2 then y = math.max(2, ap.Y - h - gap) end
 		return x, y, w
@@ -1926,16 +1938,16 @@ function Window:AddTab(o)
 		ElasticBehavior = Enum.ElasticBehavior.Never,
 		Parent = page,
 	})
-	local padTop, padBot, padSide = 14, 20, 14
-	local scrollList = List(scroll, 12)
+	local padTop, padBot, padSide = 18, 22, 18
+	local scrollList = List(scroll, 16)
 	Pad(scroll, padTop, padBot, padSide, padSide)
 	Tab.Top = Frame({ Size = UDim2.new(1, 0, 0, 0), AutomaticSize = Enum.AutomaticSize.Y, LayoutOrder = 1, Parent = scroll })
-	List(Tab.Top, 12)
+	List(Tab.Top, 16)
 	local cols = Frame({ Size = UDim2.new(1, 0, 0, 0), AutomaticSize = Enum.AutomaticSize.Y, LayoutOrder = 2, Parent = scroll })
-	List(cols, 12, Enum.FillDirection.Horizontal)
-	Tab.Left = Frame({ Size = UDim2.new(.5, -6, 0, 0), AutomaticSize = Enum.AutomaticSize.Y, LayoutOrder = 1, Parent = cols })
-	Tab.Right = Frame({ Size = UDim2.new(.5, -6, 0, 0), AutomaticSize = Enum.AutomaticSize.Y, LayoutOrder = 2, Parent = cols })
-	List(Tab.Left, 12) List(Tab.Right, 12)
+	List(cols, 16, Enum.FillDirection.Horizontal)
+	Tab.Left = Frame({ Size = UDim2.new(.5, -8, 0, 0), AutomaticSize = Enum.AutomaticSize.Y, LayoutOrder = 1, Parent = cols })
+	Tab.Right = Frame({ Size = UDim2.new(.5, -8, 0, 0), AutomaticSize = Enum.AutomaticSize.Y, LayoutOrder = 2, Parent = cols })
+	List(Tab.Left, 16) List(Tab.Right, 16)
 	Tab.Page = page
 	Tab.Scroll = scroll
 
@@ -2095,193 +2107,249 @@ function Window:CreateSettingsTab()
 	return tab
 end
 
--- Built-in Players tab: list + status + actions (Teleport by default; add more via :AddAction)
-function Window:CreatePlayersTab(o)
-	o = o or {}
+
+-- ---------------------------------------------------------------------------
+-- Players tab: Username / Team / Status list + selected-player card
+-- ---------------------------------------------------------------------------
+Blush.PlayerStatus = {}
+local STATUS_COLORS = {
+	Neutral = nil, -- falls back to SubText
+	Enemy = Color3.fromRGB(255, 99, 116),
+	Friendly = Color3.fromRGB(94, 224, 144),
+}
+local LOCAL_COLOR = Color3.fromRGB(70, 235, 150)
+
+function Blush:GetPlayerStatus(plr)
+	if not plr then return "Neutral" end
+	if plr == Players.LocalPlayer then return "LocalPlayer" end
+	return self.PlayerStatus[tostring(plr.UserId)] or "Neutral"
+end
+function Blush:IsEnemy(plr) return self:GetPlayerStatus(plr) == "Enemy" end
+function Blush:IsFriendly(plr) return self:GetPlayerStatus(plr) == "Friendly" end
+function Blush:SetPlayerStatus(plr, status)
+	if not plr or plr == Players.LocalPlayer then return end
+	if status ~= "Enemy" and status ~= "Friendly" then status = "Neutral" end
+	self.PlayerStatus[tostring(plr.UserId)] = status ~= "Neutral" and status or nil
+	if self.OnPlayerStatusChanged then task.spawn(self.OnPlayerStatusChanged, plr, status) end
+	if self._PlayersRefresh then self._PlayersRefresh() end
+	Config:_Dirty()
+end
+
+function Window:CreatePlayersTab()
 	if self._PlayersTab then return self._PlayersTab end
-	local tab = self:AddTab({ Name = o.Name or "Players", Icon = o.Icon or "person" })
+	local tab = self:AddTab({ Name = "Players", Icon = "users" })
+	-- sit just left of the pinned Settings tab
+	tab.Button.LayoutOrder = 9998
+	tab.Index = 9998
 	self._PlayersTab = tab
+	tab.Scroll.Visible = false
 
-	local statusMap = {} -- [UserId] = "Neutral" | "Enemy" | "Friendly"
-	local selectedPlr = nil
-	local actions = {}
-	local rows = {}
+	local root = Frame({ Size = UDim2.fromScale(1, 1), Parent = tab.Page })
+	Pad(root, 18, 18, 18, 18)
 
-	local listSec = tab:AddSection({ Name = "Players", Side = "Full" })
-	local holder = Frame({ Size = UDim2.new(1, 0, 0, 280), Parent = listSec.Inner })
-	local box = Frame({ Size = UDim2.fromScale(1, 1), BackgroundColor3 = Theme.Element, Parent = holder })
-	Corner(box, 6) Stroke(box, Theme.Stroke, 1)
+	local FOOT_H = 78
+	-- list card ---------------------------------------------------------------
+	local card = Frame({ Size = UDim2.new(1, 0, 1, -(FOOT_H + 16)), BackgroundColor3 = Theme.Panel, ClipsDescendants = true, Parent = root })
+	Corner(card, 7)
+	Stroke(card, Theme.Stroke, 1, .78)
 
-	-- Header row
-	local head = Frame({ Size = UDim2.new(1, 0, 0, 26), Parent = box })
-	Label({ Text = "Username", FontFace = Fonts.Bold, TextSize = 12, TextColor3 = Theme.SubText, Position = UDim2.fromOffset(10, 0), Size = UDim2.new(.42, -10, 1, 0), Parent = head })
-	Label({ Text = "Team", FontFace = Fonts.Bold, TextSize = 12, TextColor3 = Theme.SubText, Position = UDim2.new(.42, 0, 0, 0), Size = UDim2.new(.28, 0, 1, 0), Parent = head })
-	Label({ Text = "Status", FontFace = Fonts.Bold, TextSize = 12, TextColor3 = Theme.SubText, Position = UDim2.new(.7, 0, 0, 0), Size = UDim2.new(.3, -10, 1, 0), Parent = head })
-	Frame({ Position = UDim2.new(0, 0, 1, -1), Size = UDim2.new(1, 0, 0, 1), BackgroundColor3 = Theme.Stroke, BackgroundTransparency = .4, Parent = head })
+	local head = Frame({ Size = UDim2.new(1, 0, 0, 36), Parent = card })
+	local function col(text, x, w, parent)
+		return Label({ Text = text, FontFace = Fonts.Bold, TextSize = 13, TextColor3 = Theme.SubText,
+			Position = UDim2.new(x, x == 0 and 16 or 0, 0, 0), Size = UDim2.new(w, x == 0 and -16 or -8, 1, 0), Parent = parent })
+	end
+	local hUser = col("Username", 0, .36, head)
+	local hTeam = col("Team", .36, .28, head)
+	local hStat = col("Status", .64, .3, head)
+	Frame({ Position = UDim2.new(0, 10, 1, -1), Size = UDim2.new(1, -20, 0, 1), BackgroundColor3 = Theme.Stroke, BackgroundTransparency = .45, Parent = head })
+
+	-- search (magnifier at the right of the header row)
+	local sbtn = Button({ AnchorPoint = Vector2.new(1, .5), Position = UDim2.new(1, -8, .5, 0), Size = UDim2.fromOffset(26, 26), Parent = head })
+	local sicon = Label({ BackgroundTransparency = 1, AnchorPoint = Vector2.new(.5, .5), Position = UDim2.fromScale(.5, .5), Size = UDim2.fromOffset(16, 16),
+		TextSize = 15, TextColor3 = Theme.SubText, TextXAlignment = Enum.TextXAlignment.Center, TextYAlignment = Enum.TextYAlignment.Center, Parent = sbtn })
+	local sfall = Label({ Text = "⌕", FontFace = Fonts.Bold, TextSize = 16, TextXAlignment = Enum.TextXAlignment.Center, TextColor3 = Theme.SubText, Size = UDim2.fromScale(1, 1), Parent = sbtn })
+	task.spawn(function() if SetMoltoIcon(sicon, "search") then sfall.Visible = false end end)
+	local sbox = Input({ AnchorPoint = Vector2.new(1, .5), Position = UDim2.new(1, -40, .5, 0), Size = UDim2.fromOffset(0, 24), BackgroundTransparency = 0,
+		BackgroundColor3 = Theme.Element, PlaceholderText = "Search players...", PlaceholderColor3 = Theme.SubText, TextSize = 12,
+		ClipsDescendants = true, Visible = false, ZIndex = 3, Parent = head })
+	Corner(sbox, 5) Pad(sbox, 0, 0, 9, 9)
+	Stroke(sbox, Theme.Stroke, 1)
+	local sopen = false
+	sbtn.MouseEnter:Connect(function() Tween(sicon, { TextColor3 = Theme.Text }, .15) Tween(sfall, { TextColor3 = Theme.Text }, .15) end)
+	sbtn.MouseLeave:Connect(function()
+		local c = sopen and Theme.Accent or Theme.SubText
+		Tween(sicon, { TextColor3 = c }, .15) Tween(sfall, { TextColor3 = c }, .15)
+	end)
 
 	local scroll = Make("ScrollingFrame", {
-		BackgroundTransparency = 1, BorderSizePixel = 0,
-		Position = UDim2.fromOffset(0, 26), Size = UDim2.new(1, 0, 1, -26),
+		BackgroundTransparency = 1, BorderSizePixel = 0, Position = UDim2.fromOffset(0, 40), Size = UDim2.new(1, 0, 1, -40),
 		ScrollBarThickness = 3, ScrollBarImageColor3 = Theme.Stroke, ScrollBarImageTransparency = .35,
-		AutomaticCanvasSize = Enum.AutomaticSize.Y, CanvasSize = UDim2.new(),
-		Parent = box,
+		AutomaticCanvasSize = Enum.AutomaticSize.Y, CanvasSize = UDim2.new(), ScrollingDirection = Enum.ScrollingDirection.Y,
+		ElasticBehavior = Enum.ElasticBehavior.Never, Parent = card,
 	})
-	List(scroll, 0) Pad(scroll, 2, 2, 0, 0)
+	List(scroll, 2) Pad(scroll, 0, 6, 6, 6)
 
-	local statusColors = {
-		Neutral = Theme.SubText,
-		Enemy = Color3.fromRGB(255, 100, 110),
-		Friendly = Color3.fromRGB(90, 220, 140),
-		LocalPlayer = Color3.fromRGB(90, 200, 255),
-	}
+	-- selected player card ------------------------------------------------------
+	local foot = Frame({ AnchorPoint = Vector2.new(0, 1), Position = UDim2.fromScale(0, 1), Size = UDim2.new(1, 0, 0, FOOT_H), BackgroundColor3 = Theme.Panel, Parent = root })
+	Corner(foot, 7)
+	Stroke(foot, Theme.Stroke, 1, .78)
+	local avatar = Create("ImageLabel", { Position = UDim2.fromOffset(15, 15), Size = UDim2.fromOffset(48, 48), BackgroundColor3 = Theme.Element, BorderSizePixel = 0, Parent = foot })
+	Corner(avatar, 6)
+	local fName = Label({ Text = "No player selected", FontFace = Fonts.Bold, TextSize = 13, Position = UDim2.fromOffset(75, 14), Size = UDim2.new(1, -75 - 280, 0, 16),
+		TextTruncate = Enum.TextTruncate.AtEnd, Parent = foot })
+	local fId = Label({ Text = "Click a player in the list", FontFace = Fonts.Medium, TextSize = 12, TextColor3 = Theme.SubText, Position = UDim2.fromOffset(75, 32), Size = UDim2.new(1, -75 - 280, 0, 16), Parent = foot })
+	local fAge = Label({ Text = "", FontFace = Fonts.Medium, TextSize = 12, TextColor3 = Theme.SubText, Position = UDim2.fromOffset(75, 49), Size = UDim2.new(1, -75 - 280, 0, 16), Parent = foot })
 
-	local function statusOf(plr)
-		if plr == Players.LocalPlayer then return "LocalPlayer" end
-		return statusMap[plr.UserId] or "Neutral"
+	local statusBtns = {}
+	local btnRow = Frame({ AnchorPoint = Vector2.new(1, 0), Position = UDim2.new(1, -15, 0, 14), Size = UDim2.fromOffset(264, 26), Parent = foot })
+	List(btnRow, 6, Enum.FillDirection.Horizontal)
+	for i, name in ipairs({ "Neutral", "Enemy", "Friendly" }) do
+		local b = Button({ Size = UDim2.new(1 / 3, -4, 1, 0), BackgroundColor3 = Theme.Element, Text = "", LayoutOrder = i, Parent = btnRow })
+		Corner(b, 5)
+		local st = Stroke(b, Theme.Stroke, 1)
+		local fillF = Frame({ Size = UDim2.fromScale(1, 1), BackgroundColor3 = WHITE, BackgroundTransparency = 1, Parent = b })
+		Corner(fillF, 5) AccentGradient(fillF)
+		local lbl = Label({ Text = name, FontFace = Fonts.Semi, TextSize = 13, TextColor3 = Theme.SubText, TextXAlignment = Enum.TextXAlignment.Center, Size = UDim2.fromScale(1, 1), ZIndex = 2, Parent = b })
+		Press(b)
+		b.MouseEnter:Connect(function() if b:GetAttribute("On") ~= true then Tween(b, { BackgroundColor3 = Color3.fromRGB(56, 62, 78) }, .12) end end)
+		b.MouseLeave:Connect(function() Tween(b, { BackgroundColor3 = Theme.Element }, .12) end)
+		statusBtns[name] = { Btn = b, Fill = fillF, Label = lbl, Stroke = st }
 	end
 
-	local function paintRow(uid)
-		local r = rows[uid]
-		if not r then return end
-		local on = selectedPlr and selectedPlr.UserId == uid
-		r.Bg.BackgroundTransparency = on and 0.15 or 1
-		local st = r.StatusText.Text
-		r.StatusText.TextColor3 = statusColors[st] or Theme.SubText
+	-- state ------------------------------------------------------------------------
+	local selected, rows, filter = nil, {}, ""
+	local function dispName(p) return p.DisplayName ~= p.Name and (p.Name .. " (" .. p.DisplayName .. ")") or p.Name end
+	local function statusColor(p)
+		local st = Blush:GetPlayerStatus(p)
+		if st == "LocalPlayer" then return LOCAL_COLOR end
+		return STATUS_COLORS[st] or Theme.SubText
 	end
 
-	local function selectPlayer(plr)
-		selectedPlr = plr
-		for uid in pairs(rows) do paintRow(uid) end
-		if tab._OnSelect then task.spawn(tab._OnSelect, plr) end
-	end
-
-	local function addRow(plr)
-		if rows[plr.UserId] then return end
-		local f = Button({
-			Size = UDim2.new(1, 0, 0, 24), BackgroundColor3 = Color3.fromRGB(70, 78, 100),
-			BackgroundTransparency = 1, Text = "", Parent = scroll,
-		})
-		local name = Label({
-			Text = plr.DisplayName ~= plr.Name and (plr.Name .. " (" .. plr.DisplayName .. ")") or plr.Name,
-			TextSize = 12, TextTruncate = Enum.TextTruncate.AtEnd,
-			Position = UDim2.fromOffset(10, 0), Size = UDim2.new(.42, -10, 1, 0), Parent = f,
-		})
-		local teamName = "None"
-		pcall(function()
-			if plr.Team then teamName = plr.Team.Name end
+	local function paintFooter()
+		local p = selected
+		if not p or not p.Parent then
+			selected = nil
+			fName.Text, fId.Text, fAge.Text = "No player selected", "Click a player in the list", ""
+			avatar.Image = ""
+			for _, d in pairs(statusBtns) do d.Btn.Visible = false end
+			return
+		end
+		fName.Text = dispName(p)
+		fId.Text = tostring(p.UserId)
+		fAge.Text = p.AccountAge .. " days old"
+		local isLocal = p == Players.LocalPlayer
+		local cur = Blush:GetPlayerStatus(p)
+		for name, d in pairs(statusBtns) do
+			d.Btn.Visible = true
+			local on = name == cur
+			d.Btn:SetAttribute("On", on)
+			Tween(d.Fill, { BackgroundTransparency = on and 0 or 1 }, .18)
+			Tween(d.Stroke, { Transparency = on and 1 or 0 }, .18)
+			Tween(d.Label, { TextColor3 = on and WHITE or Theme.SubText, TextTransparency = isLocal and .55 or 0 }, .18)
+			d.Btn.Active = not isLocal
+			d.Btn.AutoButtonColor = false
+		end
+		task.spawn(function()
+			local ok, img = pcall(function() return Players:GetUserThumbnailAsync(p.UserId, Enum.ThumbnailType.HeadShot, Enum.ThumbnailSize.Size100x100) end)
+			if ok and selected == p then avatar.Image = img end
 		end)
-		local team = Label({
-			Text = teamName, TextSize = 12, TextColor3 = Theme.SubText, TextTruncate = Enum.TextTruncate.AtEnd,
-			Position = UDim2.new(.42, 0, 0, 0), Size = UDim2.new(.28, 0, 1, 0), Parent = f,
-		})
-		local st = statusOf(plr)
-		local status = Label({
-			Text = st, TextSize = 12, TextColor3 = statusColors[st] or Theme.SubText,
-			Position = UDim2.new(.7, 0, 0, 0), Size = UDim2.new(.3, -10, 1, 0), Parent = f,
-		})
-		f.MouseEnter:Connect(function()
-			if not (selectedPlr and selectedPlr.UserId == plr.UserId) then
-				Tween(f, { BackgroundTransparency = .55 }, .1)
-			end
-		end)
-		f.MouseLeave:Connect(function()
-			if not (selectedPlr and selectedPlr.UserId == plr.UserId) then
-				Tween(f, { BackgroundTransparency = 1 }, .1)
-			end
-		end)
-		f.MouseButton1Click:Connect(function() selectPlayer(plr) end)
-		rows[plr.UserId] = { Frame = f, Bg = f, Name = name, Team = team, StatusText = status, Player = plr }
-		paintRow(plr.UserId)
 	end
 
-	local function removeRow(uid)
-		local r = rows[uid]
-		if not r then return end
-		r.Frame:Destroy()
-		rows[uid] = nil
-		if selectedPlr and selectedPlr.UserId == uid then selectedPlr = nil end
+	for name, d in pairs(statusBtns) do
+		d.Btn.MouseButton1Click:Connect(function()
+			if selected and selected ~= Players.LocalPlayer then Blush:SetPlayerStatus(selected, name) end
+		end)
+	end
+
+	local function paintRow(r)
+		local on = selected == r.Player
+		Tween(r.Frame, { BackgroundTransparency = on and .32 or 1 }, .15)
+		Tween(r.User, { TextColor3 = on and WHITE or Theme.Text }, .15)
+		Tween(r.Team, { TextColor3 = on and WHITE or Theme.SubText }, .15)
+		r.Status.TextColor3 = on and (Blush:GetPlayerStatus(r.Player) == "Neutral" and WHITE or statusColor(r.Player)) or statusColor(r.Player)
 	end
 
 	local function rebuild()
-		for _, plr in ipairs(Players:GetPlayers()) do addRow(plr) end
+		for _, r in pairs(rows) do r.Frame:Destroy() end
+		rows = {}
+		local list = Players:GetPlayers()
+		local lp = Players.LocalPlayer
+		table.sort(list, function(a, b)
+			if a == lp then return true elseif b == lp then return false end
+			return a.Name:lower() < b.Name:lower()
+		end)
+		local q = filter:lower()
+		local idx = 0
+		for _, p in ipairs(list) do
+			if q == "" or p.Name:lower():find(q, 1, true) or p.DisplayName:lower():find(q, 1, true) then
+				idx += 1
+				local f = Button({ Size = UDim2.new(1, 0, 0, 28), BackgroundColor3 = WHITE, BackgroundTransparency = 1, LayoutOrder = idx, Text = "", Parent = scroll })
+				Corner(f, 5) AccentGradient(f)
+				local u = Label({ Text = dispName(p), TextSize = 13, Position = UDim2.fromOffset(10, 0), Size = UDim2.new(.36, -10, 1, 0), TextTruncate = Enum.TextTruncate.AtEnd, ZIndex = 2, Parent = f })
+				local t = Label({ Text = p.Team and p.Team.Name or "None", FontFace = Fonts.Medium, TextSize = 13, TextColor3 = Theme.SubText,
+					Position = UDim2.new(.36, 0, 0, 0), Size = UDim2.new(.28, -8, 1, 0), TextTruncate = Enum.TextTruncate.AtEnd, ZIndex = 2, Parent = f })
+				local st = Label({ Text = Blush:GetPlayerStatus(p) == "Neutral" and "Neutral" or Blush:GetPlayerStatus(p), FontFace = Fonts.Medium, TextSize = 13,
+					Position = UDim2.new(.64, 0, 0, 0), Size = UDim2.new(.36, -8, 1, 0), ZIndex = 2, Parent = f })
+				local r = { Frame = f, User = u, Team = t, Status = st, Player = p }
+				rows[p] = r
+				f.MouseEnter:Connect(function() if selected ~= p then Tween(f, { BackgroundTransparency = .86 }, .1) end end)
+				f.MouseLeave:Connect(function() if selected ~= p then Tween(f, { BackgroundTransparency = 1 }, .1) end end)
+				f.MouseButton1Click:Connect(function()
+					selected = p
+					for _, rr in pairs(rows) do paintRow(rr) end
+					paintFooter()
+				end)
+				paintRow(r)
+			end
+		end
+		if selected and not selected.Parent then selected = nil end
+		paintFooter()
 	end
+	Blush._PlayersRefresh = rebuild
+
+	sbtn.MouseButton1Click:Connect(function()
+		sopen = not sopen
+		local c = sopen and Theme.Accent or Theme.SubText
+		Tween(sicon, { TextColor3 = c }, .2) Tween(sfall, { TextColor3 = c }, .2)
+		if sopen then
+			sbox.Visible = true
+			Tween(sbox, { Size = UDim2.fromOffset(190, 24) }, .3)
+			task.delay(.1, function() sbox:CaptureFocus() end)
+		else
+			sbox.Text = ""
+			Tween(sbox, { Size = UDim2.fromOffset(0, 24) }, .22)
+			task.delay(.23, function() if not sopen then sbox.Visible = false end end)
+		end
+	end)
+	sbox:GetPropertyChangedSignal("Text"):Connect(function() filter = sbox.Text rebuild() end)
+
+	local function watch(p)
+		Connect(p:GetPropertyChangedSignal("Team"), rebuild)
+	end
+	for _, p in ipairs(Players:GetPlayers()) do watch(p) end
+	Connect(Players.PlayerAdded, function(p) watch(p) rebuild() end)
+	Connect(Players.PlayerRemoving, function(p)
+		if selected == p then selected = nil end
+		task.defer(rebuild)
+	end)
 	rebuild()
-	Connect(Players.PlayerAdded, function(plr)
-		task.defer(function() addRow(plr) end)
-	end)
-	Connect(Players.PlayerRemoving, function(plr)
-		removeRow(plr.UserId)
-	end)
 
-	-- Status buttons
-	local statusSec = tab:AddSection({ Name = "Status", Side = "Left" })
-	local function setStatus(st)
-		if not selectedPlr or selectedPlr == Players.LocalPlayer then return end
-		statusMap[selectedPlr.UserId] = st
-		local r = rows[selectedPlr.UserId]
-		if r then
-			r.StatusText.Text = st
-			paintRow(selectedPlr.UserId)
-		end
-	end
-	statusSec:AddButtonRow({
-		{ Name = "Neutral", Callback = function() setStatus("Neutral") end },
-		{ Name = "Enemy", Callback = function() setStatus("Enemy") end },
-		{ Name = "Friendly", Callback = function() setStatus("Friendly") end },
-	})
-
-	-- Actions section — Teleport default; user can AddAction
-	local actSec = tab:AddSection({ Name = "Actions", Side = "Right" })
-	local function runAction(fn)
-		if not selectedPlr then
-			Blush:Notify({ Title = "Players", Content = "Select a player first", Duration = 2 })
-			return
-		end
-		task.spawn(fn, selectedPlr)
-	end
-
-	local PlayersAPI = {
-		Tab = tab,
-		GetSelected = function() return selectedPlr end,
-		GetStatus = function(plr) return statusOf(plr) end,
-		SetStatus = function(plr, st)
-			if typeof(plr) == "Instance" then statusMap[plr.UserId] = st end
-			if plr and rows[plr.UserId] then
-				rows[plr.UserId].StatusText.Text = st
-				paintRow(plr.UserId)
+	-- statuses are saved / loaded with configs
+	local store = { Type = "PlayerStatus" }
+	function store:Save() return table.clone(Blush.PlayerStatus) end
+	function store:Load(d)
+		Blush.PlayerStatus = {}
+		if type(d) == "table" then
+			for k, v in pairs(d) do
+				if v == "Enemy" or v == "Friendly" then Blush.PlayerStatus[tostring(k)] = v end
 			end
-		end,
-		OnSelect = function(_, fn) tab._OnSelect = fn end,
-		AddAction = function(_, opts)
-			opts = opts or {}
-			local name = opts.Name or "Action"
-			table.insert(actions, opts)
-			actSec:AddButton({
-				Name = name,
-				Callback = function()
-					runAction(opts.Callback or function() end)
-				end,
-			})
-		end,
-	}
-
-	-- Default action: Teleport
-	PlayersAPI:AddAction({
-		Name = "Teleport",
-		Callback = function(plr)
-			local lp = Players.LocalPlayer
-			local char = lp and lp.Character
-			local root = char and char:FindFirstChild("HumanoidRootPart")
-			local target = plr.Character and plr.Character:FindFirstChild("HumanoidRootPart")
-			if root and target then
-				root.CFrame = target.CFrame + Vector3.new(0, 3, 0)
-			else
-				Blush:Notify({ Title = "Teleport", Content = "Could not find character", Duration = 2 })
-			end
-		end,
-	})
-
-	return PlayersAPI
+		end
+		rebuild()
+	end
+	function store:Reset() self:Load({}) end
+	store.Default = { {} }
+	Blush:_Flag(store, "Players: Status")
+	return tab
 end
 
 function Blush:CreateWindow(cfg)
@@ -2302,39 +2370,45 @@ function Blush:CreateWindow(cfg)
 	local header = Frame({ Size = UDim2.new(1, 0, 0, HEADER_H), BackgroundColor3 = WHITE, ClipsDescendants = true, Parent = main })
 	AccentGradient(header, 0)
 	W.Header = header
-	-- Flowing waves drifting across the header (built from short rotated segments)
-	local function BuildWave(amp, cycles, speed, thick, baseTrans, yOff, phase0)
-		local N, Wpx = 64, size.X
-		local segs = {}
-		for i = 1, N do
-			local seg = Frame({
-				AnchorPoint = Vector2.new(.5, .5),
-				Size = UDim2.fromOffset(Wpx / (N - 1) * 1.7, thick),
-				BackgroundColor3 = WHITE,
-				Parent = header,
-			})
-			Corner(seg, thick)
-			segs[i] = seg
-		end
-		local t = phase0
-		Connect(RunService.Heartbeat, function(dt)
-			if not header.Parent or not main.Visible then return end
-			t += dt * speed
-			for i, seg in ipairs(segs) do
-				local x = (i - 1) / (N - 1)
-				local ph = x * math.pi * 2 * cycles + t
-				local y = math.sin(ph) * amp
-				local slope = math.cos(ph) * amp * math.pi * 2 * cycles / Wpx
-				seg.Position = UDim2.new(x, 0, .5, y + yOff)
-				seg.Rotation = math.deg(math.atan(slope))
-				-- fade both ends so the wave melts into the header
-				local env = math.sin(x * math.pi) ^ .6
-				seg.BackgroundTransparency = 1 - (1 - baseTrans) * env
-			end
-		end)
+	-- One thick, translucent wave. It drifts so its crest/trough slide off the top and
+	-- bottom of the header and back on again, while its opacity breathes in and out.
+	local waveGroup = Make("CanvasGroup", {
+		BackgroundTransparency = 1,
+		BorderSizePixel = 0,
+		Size = UDim2.fromScale(1, 1),
+		GroupTransparency = .5,
+		Parent = header,
+	})
+	local segs = {}
+	local N, Wpx = 72, size.X
+	local amp, cycles, speed, base = 30, 1, .55, 20
+	local segW = Wpx / (N - 1) * 1.9
+	for i = 1, N do
+		segs[i] = Frame({
+			AnchorPoint = Vector2.new(.5, .5),
+			BackgroundColor3 = Color3.fromRGB(255, 236, 255),
+			Parent = waveGroup,
+		})
 	end
-	BuildWave(7, 1.6, 1.3, 3, .35, 2, 0)
-	BuildWave(5, 2.2, -1.0, 2, .6, -1, 2)
+	local function stepWave(t)
+		for i = 1, N do
+			local x = (i - 1) / (N - 1)
+			local ph = x * math.pi * 2 * cycles + t * speed
+			local seg = segs[i]
+			local thick = base * (.4 + .6 * math.sin(x * math.pi))
+			seg.Position = UDim2.new(x, 0, .5, math.sin(ph) * amp)
+			seg.Size = UDim2.fromOffset(segW, thick)
+			seg.Rotation = math.deg(math.atan(math.cos(ph) * amp * math.pi * 2 * cycles / Wpx))
+		end
+	end
+	stepWave(0)
+	local waveT = 0
+	Connect(RunService.RenderStepped, function(dt)
+		if not W.Open then return end
+		waveT += dt
+		stepWave(waveT)
+	end)
+	TweenService:Create(waveGroup, TweenInfo.new(2.4, Sine, Enum.EasingDirection.InOut, -1, true), { GroupTransparency = .84 }):Play()
 	local rng = Random.new(7)
 	for i = 1, 18 do
 		local star = Label({
@@ -2448,11 +2522,17 @@ function Blush:CreateWindow(cfg)
 	if cfg.SettingsTab ~= false then
 		W:CreateSettingsTab()
 	end
+	if cfg.PlayersTab ~= false then
+		W:CreatePlayersTab()
+	end
 
 	table.insert(self.Windows, W)
 	W:SetOpen(cfg.Open ~= false)
 	if cfg.AutoLoad ~= false then task.defer(function() Config:AutoLoad() end) end
 	if cfg.Watermark == false then self:SetWatermark(false) end
+	if cfg.LoadNotify ~= false then
+		self:Notify({ Title = "Loaded " .. W.Name, Content = "Press " .. KeyName(W.Keybind) .. " to open and close the menu.", Duration = 5 })
+	end
 	return W
 end
 
