@@ -619,31 +619,42 @@ function Blush:_BuildHUD()
 	})
 	Corner(wm, 8)
 	Stroke(wm, Theme.Stroke, 1, .4)
-	-- Engraved full-width purple bar (clips to rounded corners)
-	EngravedLine(wm, 2)
+	-- Top accent bar flush with rounded corners (same structure as notifications)
+	local wmBar = Frame({
+		Size = UDim2.new(1, 0, 0, 2),
+		BackgroundColor3 = WHITE,
+		BorderSizePixel = 0,
+		ZIndex = 5,
+		Parent = wm,
+	})
+	AccentGradient(wmBar)
 	local row = Frame({
 		Position = UDim2.fromOffset(0, 2),
 		Size = UDim2.fromOffset(0, 32),
 		AutomaticSize = Enum.AutomaticSize.X,
 		Parent = wm,
 	})
-	local rl = List(row, 9, Enum.FillDirection.Horizontal)
+	local rl = List(row, 8, Enum.FillDirection.Horizontal)
 	rl.VerticalAlignment = Enum.VerticalAlignment.Center
-	Pad(row, 2, 0, 14, 14)
+	Pad(row, 2, 0, 12, 12)
 
 	local order = 0
-	local function seg(text, bold)
+	local function seg(text, bold, fixedW)
 		order += 1
-		return Label({
+		local props = {
 			Text = text,
 			FontFace = bold and Fonts.Bold or Fonts.Medium,
 			TextSize = bold and 13 or 12,
 			TextColor3 = bold and WHITE or Theme.Text,
-			Size = UDim2.fromOffset(0, 24),
-			AutomaticSize = Enum.AutomaticSize.X,
+			Size = UDim2.fromOffset(fixedW or 0, 24),
 			LayoutOrder = order,
 			Parent = row,
-		})
+		}
+		if not fixedW then props.AutomaticSize = Enum.AutomaticSize.X end
+		if fixedW then
+			props.TextXAlignment = Enum.TextXAlignment.Center
+		end
+		return Label(props)
 	end
 	local function sep()
 		order += 1
@@ -658,13 +669,14 @@ function Blush:_BuildHUD()
 	local title = seg("Blush", true)
 	AccentGradient(title)
 	sep()
+	-- Name can grow; fps/ping/time use fixed widths so FPS spikes don't resize the bar
 	local nameLbl = seg(lp and lp.Name or "player")
 	sep()
-	local fpsLbl = seg("0 fps")
+	local fpsLbl = seg("000 fps", false, 58)
 	sep()
-	local pingLbl = seg("0 ms")
+	local pingLbl = seg("000 ms", false, 52)
 	sep()
-	local timeLbl = seg("00:00")
+	local timeLbl = seg("00:00", false, 40)
 	self.WatermarkFrame, self.WatermarkTitle = wm, title
 	self.WatermarkName = nameLbl
 	self.HideIdentity = false
@@ -1100,18 +1112,16 @@ function Container:AddToggle(o)
 	local fill = Frame({ Size = UDim2.fromScale(1, 1), BackgroundColor3 = WHITE, BackgroundTransparency = 1, Parent = box })
 	Corner(fill, 5)
 	AccentGradient(fill, 45)
-	-- Simple checkmark
-	local tick = Label({
-		Text = "✓",
-		FontFace = Fonts.Bold,
-		TextSize = 12,
-		TextColor3 = WHITE,
-		TextTransparency = 1,
-		TextXAlignment = Enum.TextXAlignment.Center,
-		TextYAlignment = Enum.TextYAlignment.Center,
+	-- Millenium-style tick icon (slightly smaller)
+	local tick = Create("ImageLabel", {
+		BackgroundTransparency = 1,
+		BorderSizePixel = 0,
+		Image = "rbxassetid://111862698467575",
+		ImageColor3 = WHITE,
+		ImageTransparency = 1,
 		AnchorPoint = Vector2.new(.5, .5),
 		Position = UDim2.fromScale(.5, .5),
-		Size = UDim2.fromOffset(18, 18),
+		Size = UDim2.fromOffset(12, 12),
 		Parent = box,
 	})
 	local tscale = Create("UIScale", { Scale = 0, Parent = tick })
@@ -1132,8 +1142,8 @@ function Container:AddToggle(o)
 		Tween(fill, { BackgroundTransparency = v and 0 or 1 }, .2)
 		Tween(bs, { Transparency = v and 1 or 0 }, .2)
 		Tween(lbl, { TextColor3 = v and Theme.Text or Theme.SubText }, .2)
-		Tween(tick, { TextTransparency = v and 0 or 1 }, .15)
-		Tween(tscale, { Scale = v and 1 or 0 }, v and .25 or .12, v and Back or Quint)
+		Tween(tick, { ImageTransparency = v and 0 or 1 }, .15)
+		Tween(tscale, { Scale = v and 1 or 0 }, v and .28 or .12, v and Back or Quint)
 		if self.Flag then Blush.Flags[self.Flag] = v end
 		if self.Keybind then self.Keybind:_Sync(v) end
 		if changed and not silent then self:_Fire(v) end
@@ -1449,7 +1459,8 @@ function Container:AddDropdown(o)
 		if count < maxVis then
 			h = searchH + count * itemH + padH
 		end
-		local popW = math.max(box.AbsoluteSize.X / math.max(window.Scale.Scale, .01), 80)
+		local sc = math.max(window.Scale.Scale, .01)
+		local popW = math.max(box.AbsoluteSize.X / sc, 80)
 		local pop = window:OpenPopup(box, UDim2.fromOffset(popW, h), function()
 			D.IsOpen = false
 			Tween(arrow, { Rotation = 0 }, .2)
@@ -1736,7 +1747,8 @@ function TabMethods:Select()
 	Tween(self.Page, { GroupTransparency = 0, Position = UDim2.fromOffset(0, 0) }, .4)
 	for _, s in ipairs(self.Sections) do s.Collapse:Refresh() end
 	if self._UpdateCanvas then task.defer(self._UpdateCanvas) end
-	w:_MoveIndicator(self, prev == nil)
+	task.defer(function() w:_MoveIndicator(self, prev == nil) end)
+	task.delay(.05, function() if w.ActiveTab == self then w:_MoveIndicator(self, true) end end)
 end
 
 local Window = {}
@@ -1759,20 +1771,22 @@ function Window:OpenPopup(anchor, size, onClose)
 	local blocker = Button({ Size = UDim2.fromScale(1, 1), Parent = ov })
 	blocker.MouseButton1Click:Connect(function() self:ClosePopup() end)
 	blocker.MouseButton2Click:Connect(function() self:ClosePopup() end)
-	local w, h = size.X.Offset, size.Y.Offset
+	local h = size.Y.Offset
+	local gap = 6 -- space between trigger and list
 	local function place()
 		local sc = math.max(self.Scale.Scale, .01)
 		local ap = (anchor.AbsolutePosition - ov.AbsolutePosition) / sc
 		local as = anchor.AbsoluteSize / sc
 		local ovs = ov.AbsoluteSize / sc
-		-- Match trigger width so center == left-align; otherwise true center
-		local x = ap.X + (as.X - w) * 0.5
+		-- Always match trigger width and left-align (visually centered when same width)
+		local w = as.X > 1 and as.X or size.X.Offset
+		local x = ap.X
 		x = math.clamp(x, 2, math.max(2, ovs.X - w - 2))
-		local y = ap.Y + as.Y + 3
-		if y + h > ovs.Y - 2 then y = math.max(2, ap.Y - h - 3) end
-		return x, y
+		local y = ap.Y + as.Y + gap
+		if y + h > ovs.Y - 2 then y = math.max(2, ap.Y - h - gap) end
+		return x, y, w
 	end
-	local x, y = place()
+	local x, y, w = place()
 	local pop = Frame({
 		Position = UDim2.fromOffset(x, y),
 		Size = UDim2.fromOffset(w, 0),
@@ -1782,13 +1796,13 @@ function Window:OpenPopup(anchor, size, onClose)
 	})
 	Corner(pop, 6)
 	Stroke(pop, Theme.Stroke, 1, .2)
-	-- Re-center after layout settles (fixes offset under scaled / column layouts)
 	task.defer(function()
 		if not pop.Parent then return end
-		local nx, ny = place()
+		local nx, ny, nw = place()
 		pop.Position = UDim2.fromOffset(nx, ny)
+		pop.Size = UDim2.fromOffset(nw, 0)
+		Tween(pop, { Size = UDim2.fromOffset(nw, h) }, .2)
 	end)
-	Tween(pop, { Size = UDim2.fromOffset(w, h) }, .22)
 	self.Popup = { Blocker = blocker, Frame = pop, OnClose = onClose }
 	return pop
 end
@@ -1798,9 +1812,10 @@ function Window:_MoveIndicator(tab, instant)
 	local btn = tab.Button
 	local sc = math.max(self.Scale.Scale, .01)
 	local hdr = self.Header
-	-- Center under the tab button, flush to the bottom of the header
-	local midX = (btn.AbsolutePosition.X + btn.AbsoluteSize.X * .5 - hdr.AbsolutePosition.X) / sc
+	-- Screen-space center of button → local X inside header
+	local midX = (btn.AbsolutePosition.X + btn.AbsoluteSize.X * 0.5 - hdr.AbsolutePosition.X) / sc
 	local pos = UDim2.fromOffset(midX, HEADER_H - 2)
+	self.Indicator.Size = UDim2.fromOffset(math.clamp(btn.AbsoluteSize.X / sc * 0.55, 12, 22), 3)
 	if instant then
 		self.Indicator.Position = pos
 	else
@@ -1957,6 +1972,9 @@ end
 function Window:CreateSettingsTab()
 	if self._SettingsTab then return self._SettingsTab end
 	local tab = self:AddTab({ Name = "Settings", Icon = "settings" })
+	-- Pin settings to the far right of the tab bar
+	tab.Button.LayoutOrder = 9999
+	tab.Index = 9999
 	self._SettingsTab = tab
 	local menu = tab:AddSection({ Name = "Menu", Side = "Left" })
 	menu:AddKeybind({ Name = "Menu key", Default = self.Keybind, Mode = "Always", NoList = true, NoState = true, NoSave = true,
