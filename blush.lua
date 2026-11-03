@@ -608,29 +608,23 @@ function Blush:_BuildHUD()
 	local gui = self.Gui
 	local lp = Players.LocalPlayer
 
-	local wm = Frame({
+	-- CanvasGroup clips children to the rounded corners, so the accent line is
+	-- cut into the watermark's shape (engraved) instead of sitting on top of it.
+	local wm = Make("CanvasGroup", {
 		Name = "Watermark",
+		BorderSizePixel = 0,
 		Position = UDim2.fromOffset(16, 16),
 		Size = UDim2.fromOffset(0, 34),
 		AutomaticSize = Enum.AutomaticSize.X,
 		BackgroundColor3 = Theme.Panel,
-		ClipsDescendants = true,
 		Parent = gui,
 	})
 	Corner(wm, 8)
 	Stroke(wm, Theme.Stroke, 1, .4)
-	-- Top accent bar flush with rounded corners (same structure as notifications)
-	local wmBar = Frame({
-		Size = UDim2.new(1, 0, 0, 2),
-		BackgroundColor3 = WHITE,
-		BorderSizePixel = 0,
-		ZIndex = 5,
-		Parent = wm,
-	})
-	AccentGradient(wmBar)
+	EngravedLine(wm, 3)
 	local row = Frame({
-		Position = UDim2.fromOffset(0, 2),
-		Size = UDim2.fromOffset(0, 32),
+		Position = UDim2.fromOffset(0, 3),
+		Size = UDim2.fromOffset(0, 31),
 		AutomaticSize = Enum.AutomaticSize.X,
 		Parent = wm,
 	})
@@ -746,7 +740,7 @@ function Blush:Notify(o)
 	local title, content, dur = o.Title or "Blush", o.Content or o.Text or "", o.Duration or 4
 
 	local hasBody = content ~= ""
-	local h = hasBody and 58 or 42
+	local h = hasBody and 59 or 43
 	local wrap = Frame({
 		Size = UDim2.new(1, 0, 0, 0),
 		BackgroundTransparency = 1,
@@ -764,21 +758,12 @@ function Blush:Notify(o)
 	})
 	Corner(card, 7)
 	Stroke(card, Theme.Stroke, 1, .35)
-	local top = Frame({ Size = UDim2.new(1, 0, 0, 2), BackgroundColor3 = WHITE, BorderSizePixel = 0, Parent = card })
-	AccentGradient(top)
-	Frame({
-		Position = UDim2.fromOffset(0, 2),
-		Size = UDim2.new(1, 0, 0, 1),
-		BackgroundColor3 = Color3.new(0, 0, 0),
-		BackgroundTransparency = .7,
-		BorderSizePixel = 0,
-		Parent = card,
-	})
+	EngravedLine(card, 3)
 	Label({
 		Text = title,
 		FontFace = Fonts.Bold,
 		TextSize = 13,
-		Position = UDim2.fromOffset(12, hasBody and 8 or 10),
+		Position = UDim2.fromOffset(12, hasBody and 9 or 12),
 		Size = UDim2.new(1, -24, 0, 16),
 		Parent = card,
 	})
@@ -789,7 +774,7 @@ function Blush:Notify(o)
 			TextSize = 12,
 			TextColor3 = Theme.SubText,
 			TextTruncate = Enum.TextTruncate.AtEnd,
-			Position = UDim2.fromOffset(12, 26),
+			Position = UDim2.fromOffset(12, 27),
 			Size = UDim2.new(1, -24, 0, 16),
 			Parent = card,
 		})
@@ -1380,7 +1365,7 @@ function Container:AddDropdown(o)
 	Corner(box, 5)
 	local st = Stroke(box, Theme.Stroke, 1)
 	Press(box)
-	local txt = Label({ Position = UDim2.fromOffset(11, 0), Size = UDim2.new(1, -36, 1, 0), TextColor3 = Theme.SubText, TextTruncate = Enum.TextTruncate.AtEnd, Parent = box })
+	local txt = Label({ Position = UDim2.fromOffset(28, 0), Size = UDim2.new(1, -56, 1, 0), TextColor3 = Theme.SubText, TextXAlignment = Enum.TextXAlignment.Center, TextTruncate = Enum.TextTruncate.AtEnd, Parent = box })
 	local arrow = Label({
 		Text = o.Multi and "+" or "▼",
 		FontFace = Fonts.Medium,
@@ -1477,6 +1462,7 @@ function Container:AddDropdown(o)
 				PlaceholderText = "Search...",
 				PlaceholderColor3 = Theme.SubText,
 				TextSize = 12,
+				TextXAlignment = Enum.TextXAlignment.Center,
 				Parent = pop,
 			})
 			Corner(sb, 4) Pad(sb, 0, 0, 9, 9)
@@ -1516,12 +1502,13 @@ function Container:AddDropdown(o)
 						Size = UDim2.new(1, 0, 0, itemH),
 						Text = tostring(v),
 						TextSize = 13,
+						TextXAlignment = Enum.TextXAlignment.Center,
 						BackgroundColor3 = Theme.Element,
 						BackgroundTransparency = 1,
 						LayoutOrder = i,
 						Parent = lst,
 					})
-					Corner(b, 4) Pad(b, 0, 0, 9, 0)
+					Corner(b, 4)
 					b.MouseEnter:Connect(function() Tween(b, { BackgroundTransparency = .4 }, .1) end)
 					b.MouseLeave:Connect(function() Tween(b, { BackgroundTransparency = 1 }, .1) end)
 					b.MouseButton1Click:Connect(function()
@@ -1673,27 +1660,19 @@ function TabMethods:AddSection(o)
 	local frame = Frame({ Size = UDim2.new(1, 0, 0, 0), AutomaticSize = Enum.AutomaticSize.Y, BackgroundColor3 = Theme.Panel, ZIndex = 2, Parent = wrap })
 	Corner(frame, 7)
 	Stroke(frame, Theme.Stroke, 1, .78)
-	-- Soft rounded fade shadow under the section
-	local sh = Frame({
-		AnchorPoint = Vector2.new(.5, 0),
-		Position = UDim2.new(.5, 0, 1, 0),
-		Size = UDim2.new(1, -6, 0, 8),
-		BackgroundColor3 = Color3.new(0, 0, 0),
-		BackgroundTransparency = .55,
-		BorderSizePixel = 0,
-		ZIndex = 0,
-		Parent = wrap,
-	})
-	Corner(sh, 6)
-	Create("UIGradient", {
-		Rotation = 90,
-		Transparency = NumberSequence.new({
-			NumberSequenceKeypoint.new(0, .35),
-			NumberSequenceKeypoint.new(.5, .7),
-			NumberSequenceKeypoint.new(1, 1),
-		}),
-		Parent = sh,
-	})
+	-- Soft shadow made of stacked rounded layers, so it follows the section's
+	-- curved corners and fades out smoothly all the way round (no hard edges).
+	for i = 1, 9 do
+		local layer = Frame({
+			Position = UDim2.new(0, -i, 0, -i + 3),
+			Size = UDim2.new(1, i * 2, 1, i * 2),
+			BackgroundColor3 = Color3.new(0, 0, 0),
+			BackgroundTransparency = .955,
+			ZIndex = 1,
+			Parent = wrap,
+		})
+		Corner(layer, 7 + i)
+	end
 	List(frame, 0)
 	local named = S.Name ~= ""
 	-- Title is display-only — sections cannot be collapsed
@@ -1816,10 +1795,16 @@ function Window:_MoveIndicator(tab, instant)
 	local midX = (btn.AbsolutePosition.X + btn.AbsoluteSize.X * 0.5 - hdr.AbsolutePosition.X) / sc
 	local pos = UDim2.fromOffset(midX, HEADER_H - 2)
 	self.Indicator.Size = UDim2.fromOffset(math.clamp(btn.AbsoluteSize.X / sc * 0.55, 12, 22), 3)
+	if self._indTw then self._indTw:Cancel() self._indTw = nil end
 	if instant then
 		self.Indicator.Position = pos
 	else
-		Tween(self.Indicator, { Position = pos }, .35)
+		self._slideUntil = os.clock() + .38
+		self._indTw = Tween(self.Indicator, { Position = pos }, .35)
+		-- re-sync once the slide ends in case the layout moved (e.g. pinned Settings tab)
+		task.delay(.4, function()
+			if self.ActiveTab == tab then self:_MoveIndicator(tab, true) end
+		end)
 	end
 end
 
@@ -1917,6 +1902,14 @@ function Window:AddTab(o)
 	end)
 	btn.MouseLeave:Connect(function() if self.ActiveTab ~= Tab then Tab.SetIcon(false) end end)
 	btn.MouseButton1Click:Connect(function() Tab:Select() end)
+	-- Keep the underline glued to the active tab whenever its button moves/resizes
+	local function follow()
+		if self.ActiveTab == Tab and os.clock() >= (self._slideUntil or 0) then
+			self:_MoveIndicator(Tab, true)
+		end
+	end
+	btn:GetPropertyChangedSignal("AbsolutePosition"):Connect(follow)
+	btn:GetPropertyChangedSignal("AbsoluteSize"):Connect(follow)
 
 	local page = Make("CanvasGroup", { BackgroundTransparency = 1, BorderSizePixel = 0, Size = UDim2.fromScale(1, 1), Visible = false, GroupTransparency = 1, Parent = self.Body })
 	local scroll = Make("ScrollingFrame", {
@@ -2119,38 +2112,39 @@ function Blush:CreateWindow(cfg)
 	local header = Frame({ Size = UDim2.new(1, 0, 0, HEADER_H), BackgroundColor3 = WHITE, ClipsDescendants = true, Parent = main })
 	AccentGradient(header, 0)
 	W.Header = header
-	-- Soft white band that drifts across the header (enters/exits the clipped frame)
-	local sheen = Frame({
-		AnchorPoint = Vector2.new(0, .5),
-		Position = UDim2.new(-0.35, 0, .5, 0),
-		Size = UDim2.new(0.55, 0, 0, 3),
-		BackgroundColor3 = WHITE,
-		BackgroundTransparency = .25,
-		BorderSizePixel = 0,
-		Rotation = 8,
-		Parent = header,
-	})
-	Create("UIGradient", {
-		Transparency = NumberSequence.new({
-			NumberSequenceKeypoint.new(0, 1),
-			NumberSequenceKeypoint.new(.25, .55),
-			NumberSequenceKeypoint.new(.5, .15),
-			NumberSequenceKeypoint.new(.75, .55),
-			NumberSequenceKeypoint.new(1, 1),
-		}),
-		Parent = sheen,
-	})
-	task.spawn(function()
-		while sheen.Parent do
-			sheen.Position = UDim2.new(-0.4, 0, .5, 0)
-			local tw = TweenService:Create(sheen, TweenInfo.new(5.5, Linear), {
-				Position = UDim2.new(1.15, 0, .5, 0),
+	-- Flowing waves drifting across the header (built from short rotated segments)
+	local function BuildWave(amp, cycles, speed, thick, baseTrans, yOff, phase0)
+		local N, Wpx = 64, size.X
+		local segs = {}
+		for i = 1, N do
+			local seg = Frame({
+				AnchorPoint = Vector2.new(.5, .5),
+				Size = UDim2.fromOffset(Wpx / (N - 1) * 1.7, thick),
+				BackgroundColor3 = WHITE,
+				Parent = header,
 			})
-			tw:Play()
-			tw.Completed:Wait()
-			task.wait(0.8)
+			Corner(seg, thick)
+			segs[i] = seg
 		end
-	end)
+		local t = phase0
+		Connect(RunService.Heartbeat, function(dt)
+			if not header.Parent or not main.Visible then return end
+			t += dt * speed
+			for i, seg in ipairs(segs) do
+				local x = (i - 1) / (N - 1)
+				local ph = x * math.pi * 2 * cycles + t
+				local y = math.sin(ph) * amp
+				local slope = math.cos(ph) * amp * math.pi * 2 * cycles / Wpx
+				seg.Position = UDim2.new(x, 0, .5, y + yOff)
+				seg.Rotation = math.deg(math.atan(slope))
+				-- fade both ends so the wave melts into the header
+				local env = math.sin(x * math.pi) ^ .6
+				seg.BackgroundTransparency = 1 - (1 - baseTrans) * env
+			end
+		end)
+	end
+	BuildWave(7, 1.6, 1.3, 3, .35, 2, 0)
+	BuildWave(5, 2.2, -1.0, 2, .6, -1, 2)
 	local rng = Random.new(7)
 	for i = 1, 18 do
 		local star = Label({
