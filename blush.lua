@@ -2592,7 +2592,7 @@ function Blush:CreateWindow(cfg)
 	-- cfg.Wave = false turns it off; cfg.Wave = { Color, Amplitude, Thickness, Opacity, Speed } customises it.
 	local TAU = math.pi * 2
 	local Wpx, midY = size.X, HEADER_H / 2
-	local COL = 3 -- column width in px; neighbouring columns differ by well under 1px in height
+	local COL = 2 -- column width in px; neighbouring columns differ by well under 1px in height
 	local function addWave(def)
 		local group = Make("CanvasGroup", {
 			BackgroundTransparency = 1, BorderSizePixel = 0, Size = UDim2.fromScale(1, 1),
@@ -2606,11 +2606,14 @@ function Blush:CreateWindow(cfg)
 			local xc = (i + .5) * COL
 			local p = xc / period * TAU + def.phase
 			-- thickness swells and thins along the wave (periodic, so the loop stays seamless)
-			local thick = def.thick * (.72 + .28 * math.sin(p + 1.9))
+			local thick = def.thick * (.78 + .22 * math.sin(p + 1.9))
+			-- on steep slopes a column is made taller so the ribbon keeps an even width and has no steps
+			local slope = math.cos(p) * def.amp * TAU / period
+			local h = thick * math.sqrt(1 + slope * slope) + math.abs(slope) * COL
 			Frame({
 				AnchorPoint = Vector2.new(.5, .5),
 				Position = UDim2.fromOffset(xc, midY + math.sin(p) * def.amp),
-				Size = UDim2.fromOffset(COL + 1, thick),
+				Size = UDim2.fromOffset(COL + 1, h),
 				BackgroundColor3 = def.color,
 				Parent = strip,
 			})
@@ -2618,19 +2621,21 @@ function Blush:CreateWindow(cfg)
 		local goal = UDim2.fromOffset(def.dir > 0 and -period or 0, 0)
 		TweenService:Create(strip, TweenInfo.new(period / def.speed, Linear, Enum.EasingDirection.Out, -1, false), { Position = goal }):Play()
 		-- opacity breathes in and out
-		TweenService:Create(group, TweenInfo.new(2.6, Sine, Enum.EasingDirection.InOut, -1, true), { GroupTransparency = math.min(def.alpha + .26, .96) }):Play()
+		TweenService:Create(group, TweenInfo.new(2.6, Sine, Enum.EasingDirection.InOut, -1, true), { GroupTransparency = math.min(def.alpha + .14, .96) }):Play()
 	end
 	if cfg.Wave ~= false then
 		local wc = type(cfg.Wave) == "table" and cfg.Wave or {}
-		local color = wc.Color or Color3.fromRGB(255, 236, 255)
+		local color = wc.Color or Color3.fromRGB(255, 232, 255)
 		local speed = wc.Speed or 1 -- multiplier
-		local amp = wc.Amplitude or 16
-		local thick = wc.Thickness or 18
+		-- Amplitude is bigger than the header itself, so crests and troughs run off the top and bottom
+		-- edges and you mostly see long sweeping slopes and arcs.
+		local amp = wc.Amplitude or 30
+		local thick = wc.Thickness or 7
 		-- echo ribbon first so the main one sits on top of it
-		addWave({ period = Wpx * .55, amp = amp * .6, thick = thick * .6, speed = 30 * speed, phase = 2.1,
-			alpha = .88, color = color, dir = -1 })
-		addWave({ period = Wpx * .95, amp = amp, thick = thick, speed = 46 * speed, phase = 0,
-			alpha = wc.Opacity or .5, color = color, dir = 1 })
+		addWave({ period = Wpx * 1.15, amp = amp * .85, thick = thick * .8, speed = 26 * speed, phase = 1.0,
+			alpha = .9, color = color, dir = -1 })
+		addWave({ period = Wpx * .81, amp = amp, thick = thick, speed = 40 * speed, phase = 4.26,
+			alpha = wc.Opacity or .72, color = color, dir = 1 })
 	end
 	local rng = Random.new(7)
 	for i = 1, 18 do
@@ -2639,7 +2644,7 @@ function Blush:CreateWindow(cfg)
 			TextSize = rng:NextInteger(7, 14),
 			TextColor3 = Color3.fromRGB(255, 240, 255),
 			TextTransparency = rng:NextNumber(.1, .55),
-			Position = UDim2.new(.26 + (i / 18) * .46, rng:NextInteger(-6, 6), rng:NextNumber(.12, .72), 0),
+			Position = UDim2.new(.16 + (i / 18) * .5, rng:NextInteger(-6, 6), rng:NextNumber(.12, .72), 0),
 			Size = UDim2.fromOffset(14, 14),
 			TextXAlignment = Enum.TextXAlignment.Center,
 			Rotation = rng:NextInteger(-20, 20),
@@ -2650,8 +2655,8 @@ function Blush:CreateWindow(cfg)
 			Rotation = star.Rotation + 18,
 		}):Play()
 	end
-	Label({ Text = W.Name, FontFace = Fonts.Bold, TextSize = 17, TextColor3 = Color3.fromRGB(252, 222, 255),
-		Position = UDim2.fromOffset(16, 0), Size = UDim2.new(0, 120, 1, 0), Parent = header })
+	Label({ Text = W.Name, FontFace = Fonts.Bold, TextSize = 21, TextColor3 = Color3.fromRGB(252, 222, 255),
+		Position = UDim2.fromOffset(16, 0), Size = UDim2.new(0, 150, 1, 0), Parent = header })
 	W.TabHolder = Frame({ AnchorPoint = Vector2.new(1, .5), Position = UDim2.new(1, -10, .5, 0), Size = UDim2.fromOffset(0, 30), AutomaticSize = Enum.AutomaticSize.X, Parent = header })
 	local tl = List(W.TabHolder, 6, Enum.FillDirection.Horizontal)
 	tl.VerticalAlignment = Enum.VerticalAlignment.Center
