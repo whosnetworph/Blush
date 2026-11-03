@@ -25,13 +25,38 @@ local Theme = {
 }
 Blush.Theme = Theme
 
-local GothamPath = "rbxasset://fonts/families/GothamSSm.json"
+-- BuilderSans reads cleaner than Gotham for UI chrome
+local FontPath = "rbxasset://fonts/families/BuilderSans.json"
 local Fonts = {
-	Medium = Font.new(GothamPath, Enum.FontWeight.Medium),
-	Semi = Font.new(GothamPath, Enum.FontWeight.SemiBold),
-	Bold = Font.new(GothamPath, Enum.FontWeight.Bold),
+	Medium = Font.new(FontPath, Enum.FontWeight.Medium),
+	Semi = Font.new(FontPath, Enum.FontWeight.SemiBold),
+	Bold = Font.new(FontPath, Enum.FontWeight.Bold),
 }
 Blush.Fonts = Fonts
+
+-- Full-width top accent bar that inherits the parent's corner radius (engraved look)
+local function EngravedLine(parent, thickness)
+	thickness = thickness or 2
+	local line = Frame({
+		Size = UDim2.new(1, 0, 0, thickness),
+		BackgroundColor3 = WHITE,
+		BorderSizePixel = 0,
+		ZIndex = 3,
+		Parent = parent,
+	})
+	AccentGradient(line)
+	-- Soft under-shadow for the engraved inset feel
+	local shade = Frame({
+		Position = UDim2.fromOffset(0, thickness),
+		Size = UDim2.new(1, 0, 0, 1),
+		BackgroundColor3 = Color3.new(0, 0, 0),
+		BackgroundTransparency = .68,
+		BorderSizePixel = 0,
+		ZIndex = 2,
+		Parent = parent,
+	})
+	return line, shade
+end
 
 local WHITE = Color3.new(1, 1, 1)
 local HEADER_H, FOOTER_H = 38, 42
@@ -545,41 +570,47 @@ function Blush:_BuildHUD()
 	local gui = self.Gui
 	local lp = Players.LocalPlayer
 
-	local wm = Frame({ Name = "Watermark", Position = UDim2.fromOffset(16, 16), Size = UDim2.fromOffset(0, 32),
-		AutomaticSize = Enum.AutomaticSize.X, BackgroundColor3 = Theme.Panel, Parent = gui })
-	Corner(wm, 7) Stroke(wm, Theme.Stroke, 1, .35)
-	-- Engraved accent line inset into the top of the watermark
-	local line = Frame({
-		Position = UDim2.fromOffset(10, 0),
-		Size = UDim2.new(1, -20, 0, 2),
-		BackgroundColor3 = WHITE,
-		ZIndex = 2,
-		Parent = wm,
+	local wm = Frame({
+		Name = "Watermark",
+		Position = UDim2.fromOffset(16, 16),
+		Size = UDim2.fromOffset(0, 34),
+		AutomaticSize = Enum.AutomaticSize.X,
+		BackgroundColor3 = Theme.Panel,
+		ClipsDescendants = true,
+		Parent = gui,
 	})
-	Corner(line, 1)
-	AccentGradient(line)
-	-- Subtle inner shadow under the line for engraved feel
-	local lineShade = Frame({
-		Position = UDim2.fromOffset(10, 2),
-		Size = UDim2.new(1, -20, 0, 1),
-		BackgroundColor3 = Color3.new(0, 0, 0),
-		BackgroundTransparency = .72,
-		Parent = wm,
-	})
-	local row = Frame({ Size = UDim2.fromOffset(0, 32), AutomaticSize = Enum.AutomaticSize.X, Parent = wm })
-	local rl = List(row, 10, Enum.FillDirection.Horizontal)
+	Corner(wm, 8)
+	Stroke(wm, Theme.Stroke, 1, .4)
+	-- Full-width curved accent (clipped by parent corner)
+	EngravedLine(wm, 2)
+	local row = Frame({ Size = UDim2.fromOffset(0, 34), AutomaticSize = Enum.AutomaticSize.X, Parent = wm })
+	local rl = List(row, 9, Enum.FillDirection.Horizontal)
 	rl.VerticalAlignment = Enum.VerticalAlignment.Center
-	Pad(row, 3, 0, 14, 14)
+	Pad(row, 4, 0, 14, 14)
 
 	local order = 0
 	local function seg(text, bold)
 		order += 1
-		return Label({ Text = text, FontFace = bold and Fonts.Bold or Fonts.Semi, TextSize = 14, TextColor3 = WHITE,
-			Size = UDim2.fromOffset(0, 24), AutomaticSize = Enum.AutomaticSize.X, LayoutOrder = order, Parent = row })
+		return Label({
+			Text = text,
+			FontFace = bold and Fonts.Bold or Fonts.Medium,
+			TextSize = bold and 13 or 12,
+			TextColor3 = bold and WHITE or Theme.Text,
+			Size = UDim2.fromOffset(0, 24),
+			AutomaticSize = Enum.AutomaticSize.X,
+			LayoutOrder = order,
+			Parent = row,
+		})
 	end
 	local function sep()
 		order += 1
-		Frame({ Size = UDim2.fromOffset(1, 14), BackgroundColor3 = Theme.Stroke, LayoutOrder = order, Parent = row })
+		Frame({
+			Size = UDim2.fromOffset(1, 12),
+			BackgroundColor3 = Theme.Stroke,
+			BackgroundTransparency = .25,
+			LayoutOrder = order,
+			Parent = row,
+		})
 	end
 	local title = seg("Blush", true)
 	AccentGradient(title)
@@ -612,30 +643,32 @@ function Blush:_BuildHUD()
 		end
 	end)
 
-	local bl = Frame({ Name = "Binds", Position = UDim2.fromOffset(16, 320), Size = UDim2.fromOffset(210, 0),
-		AutomaticSize = Enum.AutomaticSize.Y, BackgroundColor3 = Theme.Panel, Visible = false, Parent = gui })
-	Corner(bl, 7) Stroke(bl, Theme.Stroke, 1, .35)
+	local bl = Frame({
+		Name = "Binds",
+		Position = UDim2.fromOffset(16, 320),
+		Size = UDim2.fromOffset(220, 0),
+		AutomaticSize = Enum.AutomaticSize.Y,
+		BackgroundColor3 = Theme.Panel,
+		ClipsDescendants = true,
+		Visible = false,
+		Parent = gui,
+	})
+	Corner(bl, 8)
+	Stroke(bl, Theme.Stroke, 1, .4)
 	List(bl, 0)
-	local bline = Frame({
-		Position = UDim2.fromOffset(10, 0),
-		Size = UDim2.new(1, -20, 0, 2),
-		BackgroundColor3 = WHITE,
-		ZIndex = 2,
+	EngravedLine(bl, 2)
+	Label({
+		Text = "Binds",
+		FontFace = Fonts.Bold,
+		TextSize = 13,
+		TextXAlignment = Enum.TextXAlignment.Center,
+		Size = UDim2.new(1, 0, 0, 32),
+		LayoutOrder = 1,
 		Parent = bl,
 	})
-	Corner(bline, 1)
-	AccentGradient(bline)
-	local blineShade = Frame({
-		Position = UDim2.fromOffset(10, 2),
-		Size = UDim2.new(1, -20, 0, 1),
-		BackgroundColor3 = Color3.new(0, 0, 0),
-		BackgroundTransparency = .72,
-		Parent = bl,
-	})
-	Label({ Text = "Binds", FontFace = Fonts.Bold, TextSize = 15, TextXAlignment = Enum.TextXAlignment.Center,
-		Size = UDim2.new(1, 0, 0, 34), LayoutOrder = 1, Parent = bl })
 	local rows = Frame({ Size = UDim2.new(1, 0, 0, 0), AutomaticSize = Enum.AutomaticSize.Y, LayoutOrder = 2, Parent = bl })
-	List(rows, 2) Pad(rows, 0, 10, 12, 12)
+	List(rows, 1)
+	Pad(rows, 2, 10, 12, 12)
 	self.BindListFrame, self.BindRows = bl, rows
 	Draggable(bl, bl, true)
 	self.BindListEnabled = false
@@ -669,28 +702,29 @@ function Blush:_RefreshBinds()
 			local f = Frame({ Size = UDim2.new(1, 0, 0, 0), LayoutOrder = order, ClipsDescendants = true, Parent = rows })
 			local n = Label({
 				Text = k.Name,
-				FontFace = Fonts.Bold,
-				TextSize = 13,
+				FontFace = Fonts.Semi,
+				TextSize = 12,
 				TextTransparency = 1,
 				TextTruncate = Enum.TextTruncate.AtEnd,
-				Size = UDim2.new(.48, 0, 1, 0),
+				Size = UDim2.new(.46, 0, 1, 0),
 				Parent = f,
 			})
 			local m = Label({
 				Text = modeText,
+				FontFace = Fonts.Medium,
 				TextColor3 = Theme.SubText,
 				TextSize = 11,
 				TextTransparency = 1,
 				TextXAlignment = Enum.TextXAlignment.Right,
-				Position = UDim2.fromScale(.48, 0),
-				Size = UDim2.fromScale(.26, 1),
+				Position = UDim2.fromScale(.46, 0),
+				Size = UDim2.fromScale(.28, 1),
 				Parent = f,
 			})
 			local keyLbl = Label({
 				Text = keyText,
-				FontFace = Fonts.Medium,
+				FontFace = Fonts.Semi,
 				TextColor3 = Theme.Accent,
-				TextSize = 12,
+				TextSize = 11,
 				TextTransparency = 1,
 				TextXAlignment = Enum.TextXAlignment.Right,
 				Position = UDim2.fromScale(.74, 0),
@@ -744,25 +778,80 @@ function Blush:Notify(o)
 	if type(o) == "string" then o = { Content = o } end
 	o = o or {}
 	local title, content, dur = o.Title or "Blush", o.Content or o.Text or "", o.Duration or 4
-	local wrap = Frame({ Size = UDim2.new(1, 0, 0, 0), AutomaticSize = Enum.AutomaticSize.Y, ClipsDescendants = false, Parent = self.NotifHolder })
-	local card = Make("CanvasGroup", { BorderSizePixel = 0, BackgroundColor3 = Color3.fromRGB(36, 40, 52), GroupTransparency = 1,
-		Position = UDim2.fromOffset(-360, 0), Size = UDim2.new(1, 0, 0, 0), AutomaticSize = Enum.AutomaticSize.Y, Parent = wrap })
-	Corner(card, 7)
+	local wrap = Frame({
+		Size = UDim2.new(1, 0, 0, 0),
+		AutomaticSize = Enum.AutomaticSize.Y,
+		ClipsDescendants = false,
+		Parent = self.NotifHolder,
+	})
+	local card = Make("CanvasGroup", {
+		BorderSizePixel = 0,
+		BackgroundColor3 = Theme.Panel,
+		GroupTransparency = 1,
+		Position = UDim2.fromOffset(-360, 0),
+		Size = UDim2.new(1, 0, 0, 0),
+		AutomaticSize = Enum.AutomaticSize.Y,
+		ClipsDescendants = true,
+		Parent = wrap,
+	})
+	Corner(card, 8)
+	Stroke(card, Theme.Stroke, 1, .45)
 	List(card, 0)
 	local pal = NotifyColors[o.Type]
 	local function tint(p)
-		if pal then Create("UIGradient", { Color = ColorSequence.new(pal[1], pal[2]), Parent = p }) else AccentGradient(p) end
+		if pal then
+			Create("UIGradient", { Color = ColorSequence.new(pal[1], pal[2]), Parent = p })
+		else
+			AccentGradient(p)
+		end
 	end
-	local top = Frame({ Size = UDim2.new(1, 0, 0, 2), LayoutOrder = 1, BackgroundColor3 = WHITE, Parent = card })
+	-- Full-width curved top accent (clipped by card corner)
+	local top = Frame({
+		Size = UDim2.new(1, 0, 0, 2),
+		LayoutOrder = 1,
+		BackgroundColor3 = WHITE,
+		BorderSizePixel = 0,
+		Parent = card,
+	})
 	tint(top)
-	local text = Frame({ Size = UDim2.new(1, 0, 0, 0), AutomaticSize = Enum.AutomaticSize.Y, LayoutOrder = 2, Parent = card })
-	List(text, 2) Pad(text, 11, 12, 18, 16)
-	Label({ Text = title, FontFace = Fonts.Bold, TextSize = 17, Size = UDim2.new(1, 0, 0, 20), LayoutOrder = 1, Parent = text })
+	local topShade = Frame({
+		Size = UDim2.new(1, 0, 0, 1),
+		LayoutOrder = 2,
+		BackgroundColor3 = Color3.new(0, 0, 0),
+		BackgroundTransparency = .68,
+		BorderSizePixel = 0,
+		Parent = card,
+	})
+	local text = Frame({
+		Size = UDim2.new(1, 0, 0, 0),
+		AutomaticSize = Enum.AutomaticSize.Y,
+		LayoutOrder = 3,
+		Parent = card,
+	})
+	List(text, 3)
+	Pad(text, 10, 12, 16, 16)
+	Label({
+		Text = title,
+		FontFace = Fonts.Bold,
+		TextSize = 14,
+		Size = UDim2.new(1, 0, 0, 18),
+		LayoutOrder = 1,
+		Parent = text,
+	})
 	if content ~= "" then
-		Label({ Text = content, FontFace = Fonts.Medium, TextSize = 14, TextColor3 = Theme.SubText, TextWrapped = true,
-			Size = UDim2.new(1, 0, 0, 0), AutomaticSize = Enum.AutomaticSize.Y, LayoutOrder = 2, Parent = text })
+		Label({
+			Text = content,
+			FontFace = Fonts.Medium,
+			TextSize = 12,
+			TextColor3 = Theme.SubText,
+			TextWrapped = true,
+			Size = UDim2.new(1, 0, 0, 0),
+			AutomaticSize = Enum.AutomaticSize.Y,
+			LayoutOrder = 2,
+			Parent = text,
+		})
 	end
-	local track = Frame({ Size = UDim2.new(1, 0, 0, 2), LayoutOrder = 3, Parent = card })
+	local track = Frame({ Size = UDim2.new(1, 0, 0, 2), LayoutOrder = 4, Parent = card })
 	local fill = Frame({ Size = UDim2.fromScale(1, 1), BackgroundColor3 = WHITE, Parent = track })
 	tint(fill)
 	local click = Button({ Size = UDim2.fromScale(1, 1), ZIndex = 5, Parent = card })
@@ -771,18 +860,18 @@ function Blush:Notify(o)
 	local function close()
 		if closed then return end
 		closed = true
-		Tween(card, { Position = UDim2.fromOffset(-360, 0), GroupTransparency = 1 }, .4, Enum.EasingStyle.Quint, Enum.EasingDirection.In)
-		task.wait(.3)
+		Tween(card, { Position = UDim2.fromOffset(-360, 0), GroupTransparency = 1 }, .35, Enum.EasingStyle.Quint, Enum.EasingDirection.In)
+		task.wait(.28)
 		if not wrap.Parent then return end
 		wrap.ClipsDescendants = true
 		wrap.AutomaticSize = Enum.AutomaticSize.None
 		wrap.Size = UDim2.new(1, 0, 0, wrap.AbsoluteSize.Y)
-		Tween(wrap, { Size = UDim2.new(1, 0, 0, 0) }, .22)
-		task.wait(.24)
+		Tween(wrap, { Size = UDim2.new(1, 0, 0, 0) }, .2)
+		task.wait(.22)
 		wrap:Destroy()
 	end
 	click.MouseButton1Click:Connect(close)
-	Tween(card, { Position = UDim2.fromOffset(0, 0), GroupTransparency = 0 }, .5, Back)
+	Tween(card, { Position = UDim2.fromOffset(0, 0), GroupTransparency = 0 }, .45, Back)
 	Tween(fill, { Size = UDim2.new(0, 0, 1, 0) }, dur, Linear)
 	task.delay(dur, close)
 end
@@ -1078,34 +1167,20 @@ function Container:AddToggle(o)
 	local fill = Frame({ Size = UDim2.fromScale(1, 1), BackgroundColor3 = WHITE, BackgroundTransparency = 1, Parent = box })
 	Corner(fill, 5)
 	AccentGradient(fill, 45)
-	-- Cleaner, tighter checkmark
-	local tick = Frame({
+	-- Clean checkmark glyph (avoids awkward two-frame geometry)
+	local tick = Label({
+		Text = "✓",
+		FontFace = Fonts.Bold,
+		TextSize = 13,
+		TextColor3 = WHITE,
+		TextXAlignment = Enum.TextXAlignment.Center,
+		TextYAlignment = Enum.TextYAlignment.Center,
 		AnchorPoint = Vector2.new(.5, .5),
 		Position = UDim2.fromScale(.5, .5),
 		Size = UDim2.fromOffset(18, 18),
 		Parent = box,
 	})
 	local tscale = Create("UIScale", { Scale = 0, Parent = tick })
-	-- Short leg of the check
-	local c1 = Frame({
-		AnchorPoint = Vector2.new(.5, .5),
-		Position = UDim2.fromOffset(6.2, 10.2),
-		Size = UDim2.fromOffset(2.2, 5.2),
-		Rotation = -45,
-		BackgroundColor3 = WHITE,
-		Parent = tick,
-	})
-	-- Long leg of the check
-	local c2 = Frame({
-		AnchorPoint = Vector2.new(.5, .5),
-		Position = UDim2.fromOffset(10.6, 8.4),
-		Size = UDim2.fromOffset(2.2, 9.4),
-		Rotation = 45,
-		BackgroundColor3 = WHITE,
-		Parent = tick,
-	})
-	Corner(c1, 1.5)
-	Corner(c2, 1.5)
 	local lbl = Label({
 		Text = o.Name or "",
 		Position = UDim2.fromOffset(28, 0),
@@ -1580,18 +1655,30 @@ function TabMethods:AddSection(o)
 	local S = setmetatable({ Name = o.Name or "", Tab = self, Window = self.Window, Elements = {} }, Container)
 	S.Section = S
 	local wrap = Frame({ Size = UDim2.new(1, 0, 0, 0), AutomaticSize = Enum.AutomaticSize.Y, Parent = parent })
-	-- Single subtle drop shadow — stacked frames look like boxes in Roblox (no blur)
-	local sh = Frame({
-		Position = UDim2.fromOffset(0, 3),
-		Size = UDim2.new(1, 0, 1, 3),
-		BackgroundColor3 = Color3.new(0, 0, 0),
-		BackgroundTransparency = .82,
-		Parent = wrap,
-	})
-	Corner(sh, 8)
 	local frame = Frame({ Size = UDim2.new(1, 0, 0, 0), AutomaticSize = Enum.AutomaticSize.Y, BackgroundColor3 = Theme.Panel, Parent = wrap })
 	Corner(frame, 7)
-	Stroke(frame, Theme.Stroke, 1, .7)
+	Stroke(frame, Theme.Stroke, 1, .75)
+	-- Soft bottom gradient shadow (small, clean — fades out instead of a hard box)
+	local sh = Frame({
+		AnchorPoint = Vector2.new(.5, 0),
+		Position = UDim2.new(.5, 0, 1, 0),
+		Size = UDim2.new(1, -10, 0, 7),
+		BackgroundColor3 = Color3.new(0, 0, 0),
+		BackgroundTransparency = .55,
+		BorderSizePixel = 0,
+		ZIndex = 0,
+		Parent = wrap,
+	})
+	Corner(sh, 5)
+	Create("UIGradient", {
+		Rotation = 90,
+		Transparency = NumberSequence.new({
+			NumberSequenceKeypoint.new(0, .25),
+			NumberSequenceKeypoint.new(.55, .7),
+			NumberSequenceKeypoint.new(1, 1),
+		}),
+		Parent = sh,
+	})
 	List(frame, 0)
 	local named = S.Name ~= ""
 	local title = Button({ Size = UDim2.new(1, 0, 0, named and 36 or 8), Text = S.Name, FontFace = Fonts.Bold, TextSize = 15,
