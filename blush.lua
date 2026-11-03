@@ -1906,22 +1906,6 @@ function Window:AddTab(o)
 	o = o or {}
 	local Tab = setmetatable({ Name = o.Name or "Tab", Sections = {}, Window = self, Index = #self.Tabs + 1 }, TabMethods)
 	local btn = Button({ Size = UDim2.fromOffset(32, 30), Parent = self.TabHolder, LayoutOrder = Tab.Index })
-	-- Soft glow behind the selected tab: stacked rounded layers (biggest first) that fade in when active
-	local glowLayers = {}
-	local glowAlpha = { .82, .88, .93, .965 }
-	for i = 4, 1, -1 do
-		local g = Frame({
-			AnchorPoint = Vector2.new(.5, .5),
-			Position = UDim2.fromScale(.5, .5),
-			Size = UDim2.fromOffset(26 + i * 4, 21 + i * 3),
-			BackgroundColor3 = WHITE,
-			BackgroundTransparency = 1,
-			ZIndex = 1,
-			Parent = btn,
-		})
-		Corner(g, 99)
-		glowLayers[i] = g
-	end
 	-- Molto material icons render as TextLabel font ligatures
 	local img = Label({
 		BackgroundTransparency = 1,
@@ -1938,6 +1922,13 @@ function Window:AddTab(o)
 		Parent = btn,
 	})
 	local scale = Create("UIScale", { Parent = img })
+	-- Active tab glow: a faint halo hugging the icon glyph itself (no blob behind it)
+	local TAB_GLOW = { Color = Color3.fromRGB(255, 228, 255), Thickness = 1.6, Transparency = .78 }
+	local function glowStroke(parent)
+		return Create("UIStroke", { Color = TAB_GLOW.Color, Thickness = TAB_GLOW.Thickness, Transparency = 1,
+			ApplyStrokeMode = Enum.ApplyStrokeMode.Contextual, LineJoinMode = Enum.LineJoinMode.Round, Parent = parent })
+	end
+	local imgGlow = glowStroke(img)
 	local fallback = Label({
 		Text = Tab.Name:sub(1, 1):upper(),
 		FontFace = Fonts.Bold,
@@ -1949,6 +1940,7 @@ function Window:AddTab(o)
 		ZIndex = 2,
 		Parent = btn,
 	})
+	local fallbackGlow = glowStroke(fallback)
 	task.spawn(function()
 		if SetMoltoIcon(img, o.Icon or Tab.Name) then
 			fallback.Visible = false
@@ -1960,9 +1952,9 @@ function Window:AddTab(o)
 		Tween(img, { TextTransparency = t }, .25)
 		Tween(fallback, { TextTransparency = t }, .25)
 		Tween(scale, { Scale = active and 1.12 or 1 }, .35, Back)
-		for i, g in ipairs(glowLayers) do
-			Tween(g, { BackgroundTransparency = active and glowAlpha[i] or 1 }, .3)
-		end
+		local gt = active and TAB_GLOW.Transparency or 1
+		Tween(imgGlow, { Transparency = gt }, .3)
+		Tween(fallbackGlow, { Transparency = gt }, .3)
 	end
 	btn.MouseEnter:Connect(function()
 		if self.ActiveTab ~= Tab then
@@ -2594,66 +2586,52 @@ function Blush:CreateWindow(cfg)
 	local header = Frame({ Size = UDim2.new(1, 0, 0, HEADER_H), BackgroundColor3 = WHITE, ClipsDescendants = true, Parent = main })
 	AccentGradient(header, 0)
 	W.Header = header
-	-- Layered flowing wave: a soft glow band, a crisp line and a fainter echo line. Each line is a
-	-- chain of rotated segments sized to meet end to end, so it reads as one smooth curve. The lines
-	-- taper out towards both edges, and the amplitude itself slowly swells and relaxes.
-	local waveGroup = Make("CanvasGroup", {
-		BackgroundTransparency = 1,
-		BorderSizePixel = 0,
-		Size = UDim2.fromScale(1, 1),
-		GroupTransparency = .08,
-		Parent = header,
-	})
-	local N, Wpx, midY = 48, size.X, HEADER_H / 2
-	local waveDefs = {
-		{ thick = 9,   alpha = .93, amp = 6.5, shift = 0,   yoff = 0,   overlap = 1,   color = Color3.fromRGB(255, 205, 255) },
-		{ thick = 2.2, alpha = .1,  amp = 6.5, shift = 0,   yoff = 0,   overlap = 1.5, color = Color3.fromRGB(255, 244, 255) },
-		{ thick = 1.4, alpha = .6,  amp = 4.5, shift = 1.1, yoff = 2.5, overlap = 1.5, color = Color3.fromRGB(255, 226, 255) },
-	}
-	for _, d in ipairs(waveDefs) do
-		d.segs, d.px, d.py = {}, table.create(N + 1, 0), table.create(N + 1, 0)
-		for i = 1, N do
-			local env = math.sin(math.pi * (i - .5) / N) ^ .6
-			d.segs[i] = Frame({
+	-- Sleek flowing wave: two thin lines whose shape never changes. Each is built once as a long strip
+	-- of joined segments, and sliding the strip sideways by exactly one wavelength loops it seamlessly,
+	-- so the animation is one tween per line (no per-frame maths). Set cfg.Wave = false to turn it off.
+	local TAU = math.pi * 2
+	local Wpx, midY = size.X, HEADER_H / 2
+	local function addWave(def)
+		local group = Make("CanvasGroup", {
+			BackgroundTransparency = 1, BorderSizePixel = 0, Size = UDim2.fromScale(1, 1),
+			GroupTransparency = def.alpha, Parent = header,
+		})
+		local period = def.period
+		local total = Wpx + period
+		local strip = Frame({ Size = UDim2.new(0, total, 1, 0), Position = UDim2.fromOffset(def.dir > 0 and 0 or -period, 0), Parent = group })
+		local count = math.ceil(total / def.step)
+		local step = total / count
+		local function yAt(x)
+			local p = x / period * TAU + def.phase
+			return midY + def.yoff + math.sin(p) * def.amp + math.sin(p * 2 + 1.1) * def.amp * .2
+		end
+		for i = 0, count - 1 do
+			local x0, x1 = i * step, (i + 1) * step
+			local y0, y1 = yAt(x0), yAt(x1)
+			local dx, dy = x1 - x0, y1 - y0
+			Frame({
 				AnchorPoint = Vector2.new(.5, .5),
-				BackgroundColor3 = d.color,
-				BackgroundTransparency = 1 - (1 - d.alpha) * env,
-				Parent = waveGroup,
+				Position = UDim2.fromOffset((x0 + x1) / 2, (y0 + y1) / 2),
+				Size = UDim2.fromOffset(math.sqrt(dx * dx + dy * dy) + 1.2, def.thick),
+				Rotation = math.deg(math.atan2(dy, dx)),
+				BackgroundColor3 = def.color,
+				Parent = strip,
 			})
 		end
+		local goal = UDim2.fromOffset(def.dir > 0 and -period or 0, 0)
+		TweenService:Create(strip, TweenInfo.new(period / def.speed, Linear, Enum.EasingDirection.Out, -1, false), { Position = goal }):Play()
+		-- slow breathing so the wave never looks mechanical
+		TweenService:Create(group, TweenInfo.new(3.2, Sine, Enum.EasingDirection.InOut, -1, true), { GroupTransparency = math.min(def.alpha + .18, .95) }):Play()
 	end
-	local TAU = math.pi * 2
-	local function waveY(d, x, t)
-		local a = d.amp * (.7 + .3 * math.sin(x * TAU * .8 - t * .6 + d.shift))
-		local y = math.sin(x * TAU * 1.15 + t * 1.0 + d.shift) * a
-			+ math.sin(x * TAU * 2.6 - t * 1.5 + d.shift * 2) * a * .28
-		return midY + d.yoff + y
+	if cfg.Wave ~= false then
+		local wc = type(cfg.Wave) == "table" and cfg.Wave or {}
+		local color = wc.Color or Color3.fromRGB(255, 240, 255)
+		local speed = wc.Speed or 1 -- multiplier
+		addWave({ period = Wpx * .62, amp = wc.Amplitude or 4.5, yoff = 0, thick = 2, speed = 38 * speed, phase = 0,
+			alpha = wc.Opacity or .45, color = color, dir = 1, step = 6.5 })
+		addWave({ period = Wpx * .4, amp = (wc.Amplitude or 4.5) * .65, yoff = 3, thick = 1.4, speed = 24 * speed, phase = 1.3,
+			alpha = .78, color = color, dir = -1, step = 6.5 })
 	end
-	local function stepWave(t)
-		for _, d in ipairs(waveDefs) do
-			local px, py = d.px, d.py
-			for i = 0, N do
-				local x = i / N
-				px[i + 1], py[i + 1] = x * Wpx, waveY(d, x, t)
-			end
-			for i = 1, N do
-				local x0, y0, x1, y1 = px[i], py[i], px[i + 1], py[i + 1]
-				local dx, dy = x1 - x0, y1 - y0
-				local seg = d.segs[i]
-				seg.Position = UDim2.fromOffset((x0 + x1) / 2, (y0 + y1) / 2)
-				seg.Size = UDim2.fromOffset(math.sqrt(dx * dx + dy * dy) + d.overlap, d.thick)
-				seg.Rotation = math.deg(math.atan2(dy, dx))
-			end
-		end
-	end
-	stepWave(0)
-	local waveT = 0
-	Connect(RunService.RenderStepped, function(dt)
-		if not W.Open then return end
-		waveT += dt
-		stepWave(waveT)
-	end)
-	TweenService:Create(waveGroup, TweenInfo.new(2.8, Sine, Enum.EasingDirection.InOut, -1, true), { GroupTransparency = .42 }):Play()
 	local rng = Random.new(7)
 	for i = 1, 18 do
 		local star = Label({
@@ -2672,8 +2650,77 @@ function Blush:CreateWindow(cfg)
 			Rotation = star.Rotation + 18,
 		}):Play()
 	end
-	Label({ Text = W.Name, FontFace = Fonts.Bold, TextSize = 17, TextColor3 = Color3.fromRGB(252, 222, 255),
-		Position = UDim2.fromOffset(16, 0), Size = UDim2.new(0, 120, 1, 0), Parent = header })
+	-- Wave title: every letter bobs up and down on a travelling sine while a colour sweep runs through
+	-- the word (only if you give two Colors). Customise with cfg.TitleWave = { Enabled, Amplitude, Speed, Spread, Colors, ColorSpeed, Size,
+	-- Font, Spacing } (set TitleWave = false for a plain title), or change it later with
+	-- window:SetTitleWave({...}) and window:SetTitle("text"). Uses your UI font by default.
+	local twIn = cfg.TitleWave
+	if twIn == false then twIn = { Enabled = false } elseif type(twIn) ~= "table" then twIn = {} end
+	W.TitleWave = {
+		Enabled = twIn.Enabled ~= false,
+		Amplitude = twIn.Amplitude or 4,   -- px each letter travels up/down (same as the reference lib)
+		Speed = twIn.Speed or 2.5,         -- wave speed (radians per second)
+		Spread = twIn.Spread or .25,       -- phase gap between neighbouring letters (lower = longer wave)
+		Colors = twIn.Colors or { Color3.fromRGB(252, 222, 255) }, -- one colour = solid; give two for a colour sweep
+		ColorSpeed = twIn.ColorSpeed or 1.6,
+		Size = twIn.Size or 17,
+		Font = twIn.Font or Fonts.Bold,
+		Spacing = twIn.Spacing or 0,
+	}
+	local titleHolder = Frame({ Position = UDim2.fromOffset(16, 0), Size = UDim2.new(0, 0, 1, 0), AutomaticSize = Enum.AutomaticSize.X, Parent = header })
+	local titleList = List(titleHolder, 0, Enum.FillDirection.Horizontal)
+	titleList.VerticalAlignment = Enum.VerticalAlignment.Center
+	local letters = {}
+	local function buildTitle()
+		local o = W.TitleWave
+		if typeof(o.Colors) == "Color3" then o.Colors = { o.Colors, o.Colors } end
+		o.Colors[2] = o.Colors[2] or o.Colors[1]
+		for _, l in ipairs(letters) do l.Wrap:Destroy() end
+		table.clear(letters)
+		titleList.Padding = UDim.new(0, o.Spacing)
+		local i = 0
+		for _, cp in utf8.codes(W.Name) do
+			i += 1
+			local ch = utf8.char(cp)
+			local wrap = Frame({ Size = UDim2.new(0, 0, 1, 0), AutomaticSize = Enum.AutomaticSize.X, LayoutOrder = i, Parent = titleHolder })
+			local lbl = Label({
+				Text = ch, FontFace = o.Font, TextSize = o.Size, TextColor3 = o.Colors[1],
+				Size = UDim2.new(0, 0, 1, 0), AutomaticSize = Enum.AutomaticSize.X,
+				TextXAlignment = Enum.TextXAlignment.Center, Parent = wrap,
+			})
+			if ch == " " then
+				wrap.AutomaticSize = Enum.AutomaticSize.None
+				wrap.Size = UDim2.new(0, math.floor(o.Size * .32), 1, 0)
+				lbl.Visible = false
+			end
+			letters[i] = { Wrap = wrap, Label = lbl }
+		end
+	end
+	buildTitle()
+	function W:SetTitleWave(opts)
+		for k, v in pairs(opts or {}) do self.TitleWave[k] = v end
+		buildTitle()
+	end
+	function W:SetTitle(text)
+		self.Name = tostring(text)
+		buildTitle()
+	end
+	local titleT = 0
+	Connect(RunService.RenderStepped, function(dt)
+		if not W.Open then return end
+		titleT += dt
+		local o = W.TitleWave
+		local c1, c2 = o.Colors[1], o.Colors[2]
+		for i, l in ipairs(letters) do
+			if o.Enabled then
+				l.Label.Position = UDim2.fromOffset(0, math.sin(titleT * o.Speed - i * o.Spread) * o.Amplitude)
+				l.Label.TextColor3 = c1:Lerp(c2, (math.sin(titleT * o.ColorSpeed - i * o.Spread * 2) + 1) / 2)
+			else
+				l.Label.Position = UDim2.new()
+				l.Label.TextColor3 = c1
+			end
+		end
+	end)
 	W.TabHolder = Frame({ AnchorPoint = Vector2.new(1, .5), Position = UDim2.new(1, -10, .5, 0), Size = UDim2.fromOffset(0, 30), AutomaticSize = Enum.AutomaticSize.X, Parent = header })
 	local tl = List(W.TabHolder, 6, Enum.FillDirection.Horizontal)
 	tl.VerticalAlignment = Enum.VerticalAlignment.Center
