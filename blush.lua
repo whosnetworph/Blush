@@ -932,8 +932,7 @@ local function MakeKeybind(container, parent, o, name, owner)
 	local btn = Button({ AutomaticSize = Enum.AutomaticSize.X, Size = UDim2.fromOffset(0, 20), BackgroundColor3 = Theme.Element,
 		Text = KeyName(K.Key), TextSize = 12, TextColor3 = Theme.SubText, TextXAlignment = Enum.TextXAlignment.Center, Parent = parent })
 	Corner(btn, 5)
-	local st = Stroke(btn, Theme.Stroke, 1)
-	Pad(btn, 0, 0, 7, 7)
+	Pad(btn, 0, 0, 8, 8)
 	Create("UISizeConstraint", { MinSize = Vector2.new(26, 20), Parent = btn })
 	Press(btn)
 	btn.MouseEnter:Connect(function() if not K.Listening then Tween(btn, { BackgroundColor3 = Color3.fromRGB(54, 60, 76) }, .12) end end)
@@ -997,8 +996,9 @@ local function MakeKeybind(container, parent, o, name, owner)
 		List(lst, 0) Pad(lst, 4, 4, 4, 4)
 		for _, m in ipairs(modes) do
 			local b = Button({ Size = UDim2.new(1, 0, 0, 26), Text = m, TextSize = 13, BackgroundColor3 = Theme.Element, BackgroundTransparency = 1,
+				TextXAlignment = Enum.TextXAlignment.Center,
 				TextColor3 = K.Mode == m and Theme.Accent or Theme.Text, Parent = lst })
-			Corner(b, 4) Pad(b, 0, 0, 9, 0)
+			Corner(b, 4) Pad(b, 0, 0, 6, 6)
 			b.MouseEnter:Connect(function() Tween(b, { BackgroundTransparency = .35 }, .1) end)
 			b.MouseLeave:Connect(function() Tween(b, { BackgroundTransparency = 1 }, .1) end)
 			b.MouseButton1Click:Connect(function() K:SetMode(m) window:ClosePopup() end)
@@ -1018,10 +1018,7 @@ local function MakeColorpicker(container, parent, o)
 
 	local swatch = Button({ Size = UDim2.fromOffset(18, 18), BackgroundColor3 = C.Value, Parent = parent })
 	Corner(swatch, 9)
-	local sst = Stroke(swatch, WHITE, 1, .6)
 	Press(swatch)
-	swatch.MouseEnter:Connect(function() Tween(sst, { Transparency = .1 }, .15) end)
-	swatch.MouseLeave:Connect(function() Tween(sst, { Transparency = .6 }, .15) end)
 
 	function C:_Apply(silent)
 		self.Value = Color3.fromHSV(self.H, self.S, self.V)
@@ -1068,7 +1065,7 @@ local function MakeColorpicker(container, parent, o)
 		end
 		local hex = Input({ Position = UDim2.fromOffset(10, hexY), Size = UDim2.fromOffset(184, 24), BackgroundTransparency = 0,
 			BackgroundColor3 = Theme.Element, TextXAlignment = Enum.TextXAlignment.Center, Parent = pop })
-		Corner(hex, 5) Stroke(hex, Theme.Stroke, 1)
+		Corner(hex, 5)
 
 		C._refresh = function()
 			sv.BackgroundColor3 = Color3.fromHSV(C.H, 1, 1)
@@ -1153,7 +1150,6 @@ function Container:AddToggle(o)
 		Parent = row,
 	})
 	Corner(box, 5)
-	local bs = Stroke(box, Theme.Stroke, 1)
 	local bscale = Create("UIScale", { Parent = box })
 	local fill = Frame({ Size = UDim2.fromScale(1, 1), BackgroundColor3 = WHITE, BackgroundTransparency = 1, Parent = box })
 	Corner(fill, 5)
@@ -1173,8 +1169,8 @@ function Container:AddToggle(o)
 	local tscale = Create("UIScale", { Scale = 0, Parent = tick })
 	local lbl = Label({
 		Text = o.Name or "",
-		Position = UDim2.fromOffset(28, 0),
-		Size = UDim2.new(1, -28, 1, 0),
+		Position = UDim2.fromOffset(26, 0),
+		Size = UDim2.new(1, -26, 1, 0),
 		TextColor3 = Theme.SubText,
 		Parent = row,
 	})
@@ -1186,7 +1182,6 @@ function Container:AddToggle(o)
 		local changed = self.Value ~= v
 		self.Value = v
 		Tween(fill, { BackgroundTransparency = v and 0 or 1 }, .2)
-		Tween(bs, { Transparency = v and 1 or 0 }, .2)
 		Tween(lbl, { TextColor3 = v and Theme.Text or Theme.SubText }, .2)
 		Tween(tick, { ImageTransparency = v and 0 or 1 }, .15)
 		Tween(tscale, { Scale = v and 1 or 0 }, v and .28 or .12, v and Back or Quint)
@@ -1196,8 +1191,8 @@ function Container:AddToggle(o)
 	end
 	function T:Save() return self.Value end
 	function T:Load(v) self:SetValue(v == true) end
-	hit.MouseEnter:Connect(function() if not T.Value then Tween(bs, { Color = Theme.Accent2 }, .15) end end)
-	hit.MouseLeave:Connect(function() Tween(bs, { Color = Theme.Stroke }, .15) end)
+	hit.MouseEnter:Connect(function() if not T.Value then Tween(box, { BackgroundColor3 = Color3.fromRGB(58, 65, 82) }, .15) end end)
+	hit.MouseLeave:Connect(function() Tween(box, { BackgroundColor3 = Theme.Element }, .15) end)
 	hit.MouseButton1Down:Connect(function() Tween(bscale, { Scale = .88 }, .08) end)
 	local function up() Tween(bscale, { Scale = 1 }, .3, Back) end
 	hit.MouseButton1Up:Connect(up)
@@ -1238,7 +1233,6 @@ function Container:AddSlider(o)
 		Parent = row,
 	})
 	Corner(edit, 4)
-	Stroke(edit, Theme.Stroke, 1)
 	local track = Frame({ Position = UDim2.fromOffset(0, 27), Size = UDim2.new(1, 0, 0, 4), BackgroundColor3 = Theme.Element, Parent = row })
 	Corner(track, 2)
 	local fill = Frame({ Size = UDim2.fromScale(0, 1), BackgroundColor3 = WHITE, Parent = track })
@@ -1308,8 +1302,7 @@ end
 local function MakeButton(parent, o, size)
 	local b = Button({ Size = size or UDim2.new(1, 0, 0, 28), BackgroundColor3 = Theme.Element, Text = o.Name or "Button",
 		TextXAlignment = Enum.TextXAlignment.Center, Parent = parent })
-	Corner(b, 5)
-	local st = Stroke(b, Theme.Stroke, 1)
+	Corner(b, 5) Pad(b, 0, 0, 8, 8)
 	Press(b)
 	b.MouseEnter:Connect(function()
 		Tween(b, { BackgroundColor3 = Color3.fromRGB(56, 62, 78) }, .15)
@@ -1373,7 +1366,6 @@ function Container:AddTextbox(o)
 	local box = Input({ Position = UDim2.new(0, 0, 1, -28), Size = UDim2.new(1, 0, 0, 28), BackgroundTransparency = 0,
 		BackgroundColor3 = Theme.Element, PlaceholderText = o.Placeholder or "", PlaceholderColor3 = Theme.SubText, ClipsDescendants = true, Parent = row })
 	Corner(box, 5) Pad(box, 0, 0, 10, 10)
-	Stroke(box, Theme.Stroke, 1)
 	-- No purple border on focus — slight background lift only
 	box.Focused:Connect(function() Tween(box, { BackgroundColor3 = Color3.fromRGB(54, 60, 76) }, .15) end)
 	self:_Add(T, row, o.Name, o)
@@ -1420,12 +1412,13 @@ function Container:AddDropdown(o)
 	o = o or {}
 	local window = self.Window
 	local D = { Type = "Dropdown", Values = o.Values or {}, Multi = o.Multi, Value = o.Multi and {} or nil }
-	local row = Frame({ Size = UDim2.new(1, 0, 0, o.Name and 50 or 30), Parent = self.Inner })
+	local row = Frame({ Size = UDim2.new(1, 0, 0, o.Name and 52 or 30), Parent = self.Inner })
 	if o.Name then Label({ Text = o.Name, FontFace = Fonts.Bold, Size = UDim2.new(1, 0, 0, 18), Parent = row }) end
 	local box = Button({ Position = UDim2.new(0, 0, 1, -30), Size = UDim2.new(1, 0, 0, 30), BackgroundColor3 = Theme.Element, Parent = row })
 	Corner(box, 5)
-	local st = Stroke(box, Theme.Stroke, 1)
-	local txt = Label({ Position = UDim2.fromOffset(11, 0), Size = UDim2.new(1, -36, 1, 0), TextColor3 = Theme.SubText, TextTruncate = Enum.TextTruncate.AtEnd, Parent = box })
+	-- Text is centred between equal 30px gutters (the right gutter holds the arrow)
+	local txt = Label({ Position = UDim2.fromOffset(30, 0), Size = UDim2.new(1, -60, 1, 0), TextColor3 = Theme.SubText,
+		TextXAlignment = Enum.TextXAlignment.Center, TextTruncate = Enum.TextTruncate.AtEnd, Parent = box })
 	-- Arrow is drawn from bars (not a font glyph) so it is exactly centered on the button
 	local arrow = Frame({ AnchorPoint = Vector2.new(.5, .5), Position = UDim2.new(1, -16, .5, 0), Size = UDim2.fromOffset(12, 12), Parent = box })
 	local function bar(w, h, x, y, rot)
@@ -1520,7 +1513,7 @@ function Container:AddDropdown(o)
 				TextSize = 12,
 				Parent = pop,
 			})
-			Corner(sb, 4) Pad(sb, 0, 0, 7, 7)
+			Corner(sb, 4) Pad(sb, 0, 0, 8, 8)
 		end
 		local lst = Make("ScrollingFrame", {
 			BackgroundTransparency = 1,
@@ -1558,13 +1551,13 @@ function Container:AddDropdown(o)
 						Size = UDim2.new(1, 0, 0, itemH),
 						Text = tostring(v),
 						TextSize = 13,
-						TextXAlignment = Enum.TextXAlignment.Left,
+						TextXAlignment = Enum.TextXAlignment.Center,
 						BackgroundColor3 = Theme.Element,
 						BackgroundTransparency = 1,
 						LayoutOrder = i,
 						Parent = lst,
 					})
-					Corner(b, 4) Pad(b, 0, 0, 7, 0)
+					Corner(b, 4) Pad(b, 0, 0, 7, 7)
 					b.MouseEnter:Connect(function() Tween(b, { BackgroundTransparency = .4 }, .1) end)
 					b.MouseLeave:Connect(function() Tween(b, { BackgroundTransparency = 1 }, .1) end)
 					b.MouseButton1Click:Connect(function()
@@ -1743,7 +1736,7 @@ function TabMethods:AddSection(o)
 	})
 	if named then
 		local lineRow = Frame({ Size = UDim2.new(1, 0, 0, 1), LayoutOrder = 2, Parent = frame })
-		local line = Frame({ Position = UDim2.fromOffset(12, 0), Size = UDim2.new(1, -24, 1, 0), BackgroundColor3 = Theme.Stroke, BackgroundTransparency = .35, Parent = lineRow })
+		local line = Frame({ Position = UDim2.fromOffset(14, 0), Size = UDim2.new(1, -28, 1, 0), BackgroundColor3 = Theme.Stroke, BackgroundTransparency = .35, Parent = lineRow })
 		Create("UIGradient", {
 			Transparency = NumberSequence.new({
 				NumberSequenceKeypoint.new(0, 1),
@@ -1756,7 +1749,7 @@ function TabMethods:AddSection(o)
 	end
 	local content = Frame({ Size = UDim2.new(1, 0, 0, 0), AutomaticSize = Enum.AutomaticSize.Y, LayoutOrder = 3, Parent = frame })
 	local inner = Frame({ Size = UDim2.new(1, 0, 0, 0), AutomaticSize = Enum.AutomaticSize.Y, Parent = content })
-	List(inner, 10) Pad(inner, named and 12 or 2, 16, 16, 16)
+	List(inner, 9) Pad(inner, named and 12 or 4, 14, 14, 14)
 	S.Frame, S.Wrap, S.Inner = frame, wrap, inner
 	table.insert(self.Sections, S)
 	return S
@@ -1830,7 +1823,7 @@ function Window:OpenPopup(anchor, size, onClose)
 		Parent = ov,
 	})
 	Corner(pop, 6)
-	Stroke(pop, Theme.Stroke, 1, .2)
+	Stroke(pop, Theme.Stroke, 1, .6)
 	task.defer(function()
 		if not pop.Parent then return end
 		local nx, ny, nw = place()
@@ -1913,6 +1906,22 @@ function Window:AddTab(o)
 	o = o or {}
 	local Tab = setmetatable({ Name = o.Name or "Tab", Sections = {}, Window = self, Index = #self.Tabs + 1 }, TabMethods)
 	local btn = Button({ Size = UDim2.fromOffset(32, 30), Parent = self.TabHolder, LayoutOrder = Tab.Index })
+	-- Soft glow behind the selected tab: stacked rounded layers (biggest first) that fade in when active
+	local glowLayers = {}
+	local glowAlpha = { .82, .88, .93, .965 }
+	for i = 4, 1, -1 do
+		local g = Frame({
+			AnchorPoint = Vector2.new(.5, .5),
+			Position = UDim2.fromScale(.5, .5),
+			Size = UDim2.fromOffset(26 + i * 4, 21 + i * 3),
+			BackgroundColor3 = WHITE,
+			BackgroundTransparency = 1,
+			ZIndex = 1,
+			Parent = btn,
+		})
+		Corner(g, 99)
+		glowLayers[i] = g
+	end
 	-- Molto material icons render as TextLabel font ligatures
 	local img = Label({
 		BackgroundTransparency = 1,
@@ -1925,6 +1934,7 @@ function Window:AddTab(o)
 		TextXAlignment = Enum.TextXAlignment.Center,
 		TextYAlignment = Enum.TextYAlignment.Center,
 		Text = "",
+		ZIndex = 2,
 		Parent = btn,
 	})
 	local scale = Create("UIScale", { Parent = img })
@@ -1936,6 +1946,7 @@ function Window:AddTab(o)
 		TextTransparency = .5,
 		TextXAlignment = Enum.TextXAlignment.Center,
 		Size = UDim2.fromScale(1, 1),
+		ZIndex = 2,
 		Parent = btn,
 	})
 	task.spawn(function()
@@ -1949,6 +1960,9 @@ function Window:AddTab(o)
 		Tween(img, { TextTransparency = t }, .25)
 		Tween(fallback, { TextTransparency = t }, .25)
 		Tween(scale, { Scale = active and 1.12 or 1 }, .35, Back)
+		for i, g in ipairs(glowLayers) do
+			Tween(g, { BackgroundTransparency = active and glowAlpha[i] or 1 }, .3)
+		end
 	end
 	btn.MouseEnter:Connect(function()
 		if self.ActiveTab ~= Tab then
@@ -1985,7 +1999,7 @@ function Window:AddTab(o)
 	scroll:GetPropertyChangedSignal("CanvasPosition"):Connect(function()
 		if self.Popup then self:ClosePopup() end
 	end)
-	local padTop, padBot, padSide = 18, 22, 18
+	local padTop, padBot, padSide = 16, 20, 16
 	local scrollList = List(scroll, 16)
 	Pad(scroll, padTop, padBot, padSide, padSide)
 	Tab.Top = Frame({ Size = UDim2.new(1, 0, 0, 0), AutomaticSize = Enum.AutomaticSize.Y, LayoutOrder = 1, Parent = scroll })
@@ -2209,7 +2223,7 @@ function Window:CreatePlayersTab(opts)
 	local BTN_W, BTN_H, BTN_GAP = 86, 26, 6
 
 	local root = Frame({ Size = UDim2.fromScale(1, 1), Parent = tab.Page })
-	Pad(root, 18, 18, 18, 18)
+	Pad(root, 16, 16, 16, 16)
 
 	-- list card ---------------------------------------------------------------
 	local card = Frame({ Size = UDim2.new(1, 0, 1, -(FOOT_MIN + 16)), BackgroundColor3 = Theme.Panel, ClipsDescendants = true, Parent = root })
@@ -2232,8 +2246,7 @@ function Window:CreatePlayersTab(opts)
 	local sbox = Input({ AnchorPoint = Vector2.new(1, .5), Position = UDim2.new(1, -40, .5, 0), Size = UDim2.fromOffset(0, 24), BackgroundTransparency = 0,
 		BackgroundColor3 = Theme.Element, PlaceholderText = "Search players...", PlaceholderColor3 = Theme.SubText, TextSize = 12,
 		ClipsDescendants = true, Visible = false, ZIndex = 3, Parent = head })
-	Corner(sbox, 5) Pad(sbox, 0, 0, 9, 9)
-	Stroke(sbox, Theme.Stroke, 1)
+	Corner(sbox, 5) Pad(sbox, 0, 0, 10, 10)
 	local sopen = false
 	sbtn.MouseEnter:Connect(function() Tween(sicon, { TextColor3 = Theme.Text }, .15) Tween(sfall, { TextColor3 = Theme.Text }, .15) end)
 	sbtn.MouseLeave:Connect(function()
@@ -2290,7 +2303,6 @@ function Window:CreatePlayersTab(opts)
 	local function newEntry(group, name, order)
 		local b = Button({ Size = UDim2.fromOffset(BTN_W, BTN_H), BackgroundColor3 = Theme.Element, Text = "", LayoutOrder = order, Visible = false, Parent = holder })
 		Corner(b, 5)
-		local st = Stroke(b, Theme.Stroke, 1)
 		local fillF = Frame({ Size = UDim2.fromScale(1, 1), BackgroundColor3 = WHITE, BackgroundTransparency = 1, Parent = b })
 		Corner(fillF, 5) AccentGradient(fillF)
 		local lbl = Label({ Text = name, FontFace = Fonts.Semi, TextSize = 13, TextColor3 = Theme.SubText, TextXAlignment = Enum.TextXAlignment.Center,
@@ -2298,14 +2310,13 @@ function Window:CreatePlayersTab(opts)
 		Press(b)
 		b.MouseEnter:Connect(function() if b:GetAttribute("On") ~= true then Tween(b, { BackgroundColor3 = Color3.fromRGB(56, 62, 78) }, .12) end end)
 		b.MouseLeave:Connect(function() Tween(b, { BackgroundColor3 = Theme.Element }, .12) end)
-		local e = { Btn = b, Fill = fillF, Label = lbl, Stroke = st, Group = group, Enabled = true }
+		local e = { Btn = b, Fill = fillF, Label = lbl, Group = group, Enabled = true }
 		table.insert(entries, e)
 		return e
 	end
 	local function paintOn(e, on, dim)
 		e.Btn:SetAttribute("On", on)
 		Tween(e.Fill, { BackgroundTransparency = on and 0 or 1 }, .18)
-		Tween(e.Stroke, { Transparency = on and 1 or 0 }, .18)
 		Tween(e.Label, { TextColor3 = on and WHITE or Theme.SubText, TextTransparency = dim and .55 or 0 }, .18)
 	end
 
@@ -2583,35 +2594,56 @@ function Blush:CreateWindow(cfg)
 	local header = Frame({ Size = UDim2.new(1, 0, 0, HEADER_H), BackgroundColor3 = WHITE, ClipsDescendants = true, Parent = main })
 	AccentGradient(header, 0)
 	W.Header = header
-	-- One thick, translucent wave. It drifts so its crest/trough slide off the top and
-	-- bottom of the header and back on again, while its opacity breathes in and out.
+	-- Layered flowing wave: a soft glow band, a crisp line and a fainter echo line. Each line is a
+	-- chain of rotated segments sized to meet end to end, so it reads as one smooth curve. The lines
+	-- taper out towards both edges, and the amplitude itself slowly swells and relaxes.
 	local waveGroup = Make("CanvasGroup", {
 		BackgroundTransparency = 1,
 		BorderSizePixel = 0,
 		Size = UDim2.fromScale(1, 1),
-		GroupTransparency = .5,
+		GroupTransparency = .08,
 		Parent = header,
 	})
-	local segs = {}
-	local N, Wpx = 72, size.X
-	local amp, cycles, speed, base = 30, 1, .55, 20
-	local segW = Wpx / (N - 1) * 1.9
-	for i = 1, N do
-		segs[i] = Frame({
-			AnchorPoint = Vector2.new(.5, .5),
-			BackgroundColor3 = Color3.fromRGB(255, 236, 255),
-			Parent = waveGroup,
-		})
+	local N, Wpx, midY = 48, size.X, HEADER_H / 2
+	local waveDefs = {
+		{ thick = 9,   alpha = .93, amp = 6.5, shift = 0,   yoff = 0,   overlap = 1,   color = Color3.fromRGB(255, 205, 255) },
+		{ thick = 2.2, alpha = .1,  amp = 6.5, shift = 0,   yoff = 0,   overlap = 1.5, color = Color3.fromRGB(255, 244, 255) },
+		{ thick = 1.4, alpha = .6,  amp = 4.5, shift = 1.1, yoff = 2.5, overlap = 1.5, color = Color3.fromRGB(255, 226, 255) },
+	}
+	for _, d in ipairs(waveDefs) do
+		d.segs, d.px, d.py = {}, table.create(N + 1, 0), table.create(N + 1, 0)
+		for i = 1, N do
+			local env = math.sin(math.pi * (i - .5) / N) ^ .6
+			d.segs[i] = Frame({
+				AnchorPoint = Vector2.new(.5, .5),
+				BackgroundColor3 = d.color,
+				BackgroundTransparency = 1 - (1 - d.alpha) * env,
+				Parent = waveGroup,
+			})
+		end
+	end
+	local TAU = math.pi * 2
+	local function waveY(d, x, t)
+		local a = d.amp * (.7 + .3 * math.sin(x * TAU * .8 - t * .6 + d.shift))
+		local y = math.sin(x * TAU * 1.15 + t * 1.0 + d.shift) * a
+			+ math.sin(x * TAU * 2.6 - t * 1.5 + d.shift * 2) * a * .28
+		return midY + d.yoff + y
 	end
 	local function stepWave(t)
-		for i = 1, N do
-			local x = (i - 1) / (N - 1)
-			local ph = x * math.pi * 2 * cycles + t * speed
-			local seg = segs[i]
-			local thick = base * (.4 + .6 * math.sin(x * math.pi))
-			seg.Position = UDim2.new(x, 0, .5, math.sin(ph) * amp)
-			seg.Size = UDim2.fromOffset(segW, thick)
-			seg.Rotation = math.deg(math.atan(math.cos(ph) * amp * math.pi * 2 * cycles / Wpx))
+		for _, d in ipairs(waveDefs) do
+			local px, py = d.px, d.py
+			for i = 0, N do
+				local x = i / N
+				px[i + 1], py[i + 1] = x * Wpx, waveY(d, x, t)
+			end
+			for i = 1, N do
+				local x0, y0, x1, y1 = px[i], py[i], px[i + 1], py[i + 1]
+				local dx, dy = x1 - x0, y1 - y0
+				local seg = d.segs[i]
+				seg.Position = UDim2.fromOffset((x0 + x1) / 2, (y0 + y1) / 2)
+				seg.Size = UDim2.fromOffset(math.sqrt(dx * dx + dy * dy) + d.overlap, d.thick)
+				seg.Rotation = math.deg(math.atan2(dy, dx))
+			end
 		end
 	end
 	stepWave(0)
@@ -2621,7 +2653,7 @@ function Blush:CreateWindow(cfg)
 		waveT += dt
 		stepWave(waveT)
 	end)
-	TweenService:Create(waveGroup, TweenInfo.new(2.4, Sine, Enum.EasingDirection.InOut, -1, true), { GroupTransparency = .84 }):Play()
+	TweenService:Create(waveGroup, TweenInfo.new(2.8, Sine, Enum.EasingDirection.InOut, -1, true), { GroupTransparency = .42 }):Play()
 	local rng = Random.new(7)
 	for i = 1, 18 do
 		local star = Label({
@@ -2641,8 +2673,8 @@ function Blush:CreateWindow(cfg)
 		}):Play()
 	end
 	Label({ Text = W.Name, FontFace = Fonts.Bold, TextSize = 17, TextColor3 = Color3.fromRGB(252, 222, 255),
-		Position = UDim2.fromOffset(18, 0), Size = UDim2.new(0, 120, 1, 0), Parent = header })
-	W.TabHolder = Frame({ AnchorPoint = Vector2.new(1, .5), Position = UDim2.new(1, -14, .5, -1), Size = UDim2.fromOffset(0, 30), AutomaticSize = Enum.AutomaticSize.X, Parent = header })
+		Position = UDim2.fromOffset(16, 0), Size = UDim2.new(0, 120, 1, 0), Parent = header })
+	W.TabHolder = Frame({ AnchorPoint = Vector2.new(1, .5), Position = UDim2.new(1, -10, .5, 0), Size = UDim2.fromOffset(0, 30), AutomaticSize = Enum.AutomaticSize.X, Parent = header })
 	local tl = List(W.TabHolder, 6, Enum.FillDirection.Horizontal)
 	tl.VerticalAlignment = Enum.VerticalAlignment.Center
 	W.Indicator = Frame({
@@ -2668,7 +2700,7 @@ function Blush:CreateWindow(cfg)
 	W.Overlay = Frame({ Size = UDim2.fromScale(1, 1), ZIndex = 20, Parent = main })
 
 	local lp = Players.LocalPlayer
-	local avatar = Create("ImageLabel", { AnchorPoint = Vector2.new(0, .5), Position = UDim2.new(0, 14, .5, 0), Size = UDim2.fromOffset(26, 26),
+	local avatar = Create("ImageLabel", { AnchorPoint = Vector2.new(0, .5), Position = UDim2.new(0, 16, .5, 0), Size = UDim2.fromOffset(26, 26),
 		BackgroundColor3 = Theme.Element, BorderSizePixel = 0, Parent = footer })
 	Corner(avatar, 13)
 	task.spawn(function()
@@ -2676,7 +2708,7 @@ function Blush:CreateWindow(cfg)
 	end)
 	self.FooterUser = Label({
 		RichText = true,
-		Position = UDim2.fromOffset(50, 0),
+		Position = UDim2.fromOffset(52, 0),
 		Size = UDim2.new(.5, 0, 1, 0),
 		TextSize = 14,
 		Text = string.format("%s <font color=\"rgb(120,127,146)\">/ %s</font>", lp.Name, lp.DisplayName),
@@ -2684,7 +2716,7 @@ function Blush:CreateWindow(cfg)
 	})
 	W.FooterUser = self.FooterUser
 
-	local sbtn = Button({ AnchorPoint = Vector2.new(1, .5), Position = UDim2.new(1, -12, .5, 0), Size = UDim2.fromOffset(30, 30), Parent = footer })
+	local sbtn = Button({ AnchorPoint = Vector2.new(1, .5), Position = UDim2.new(1, -10, .5, 0), Size = UDim2.fromOffset(30, 30), Parent = footer })
 	local sicon = Label({
 		BackgroundTransparency = 1,
 		AnchorPoint = Vector2.new(.5, .5),
@@ -2701,11 +2733,10 @@ function Blush:CreateWindow(cfg)
 	task.spawn(function()
 		if SetMoltoIcon(sicon, "search") then sfall.Visible = false end
 	end)
-	local sbox = Input({ AnchorPoint = Vector2.new(1, .5), Position = UDim2.new(1, -50, .5, 0), Size = UDim2.fromOffset(0, 26),
+	local sbox = Input({ AnchorPoint = Vector2.new(1, .5), Position = UDim2.new(1, -46, .5, 0), Size = UDim2.fromOffset(0, 26),
 		BackgroundTransparency = 0, BackgroundColor3 = Theme.Element, PlaceholderText = "Search...", PlaceholderColor3 = Theme.SubText,
 		TextSize = 13, ClipsDescendants = true, Visible = false, Parent = footer })
 	Corner(sbox, 5) Pad(sbox, 0, 0, 10, 10)
-	local sst = Stroke(sbox, Theme.Stroke, 1)
 	local sopen = false
 	sbtn.MouseEnter:Connect(function() Tween(sicon, { TextColor3 = Theme.Text }, .15) Tween(sfall, { TextColor3 = Theme.Text }, .15) end)
 	sbtn.MouseLeave:Connect(function()
