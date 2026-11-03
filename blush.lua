@@ -112,11 +112,13 @@ end
 -- Full-width top accent (Create only — avoids Frame local-order issues)
 local function EngravedLine(parent, thickness)
 	thickness = thickness or 2
+	-- Flush top accent; parent must ClipsDescendants so UICorner clips the bar
 	local line = Create("Frame", {
 		Size = UDim2.new(1, 0, 0, thickness),
+		Position = UDim2.fromOffset(0, 0),
 		BackgroundColor3 = WHITE,
 		BorderSizePixel = 0,
-		ZIndex = 3,
+		ZIndex = 5,
 		Parent = parent,
 	})
 	AccentGradient(line)
@@ -124,9 +126,9 @@ local function EngravedLine(parent, thickness)
 		Position = UDim2.fromOffset(0, thickness),
 		Size = UDim2.new(1, 0, 0, 1),
 		BackgroundColor3 = Color3.new(0, 0, 0),
-		BackgroundTransparency = .68,
+		BackgroundTransparency = .72,
 		BorderSizePixel = 0,
-		ZIndex = 2,
+		ZIndex = 4,
 		Parent = parent,
 	})
 	return line
@@ -619,10 +621,15 @@ function Blush:_BuildHUD()
 	Stroke(wm, Theme.Stroke, 1, .4)
 	-- Engraved full-width purple bar (clips to rounded corners)
 	EngravedLine(wm, 2)
-	local row = Frame({ Size = UDim2.fromOffset(0, 34), AutomaticSize = Enum.AutomaticSize.X, Parent = wm })
+	local row = Frame({
+		Position = UDim2.fromOffset(0, 2),
+		Size = UDim2.fromOffset(0, 32),
+		AutomaticSize = Enum.AutomaticSize.X,
+		Parent = wm,
+	})
 	local rl = List(row, 9, Enum.FillDirection.Horizontal)
 	rl.VerticalAlignment = Enum.VerticalAlignment.Center
-	Pad(row, 4, 0, 14, 14)
+	Pad(row, 2, 0, 14, 14)
 
 	local order = 0
 	local function seg(text, bold)
@@ -726,7 +733,6 @@ function Blush:Notify(o)
 	o = o or {}
 	local title, content, dur = o.Title or "Blush", o.Content or o.Text or "", o.Duration or 4
 
-	-- Compact Astral-style notification — fade only (no off-screen slide that clips)
 	local hasBody = content ~= ""
 	local h = hasBody and 58 or 42
 	local wrap = Frame({
@@ -739,6 +745,7 @@ function Blush:Notify(o)
 		BorderSizePixel = 0,
 		BackgroundColor3 = Theme.Panel,
 		GroupTransparency = 1,
+		Position = UDim2.fromOffset(0, 16),
 		Size = UDim2.new(1, 0, 0, h),
 		ClipsDescendants = true,
 		Parent = wrap,
@@ -789,14 +796,15 @@ function Blush:Notify(o)
 	local function close()
 		if closed then return end
 		closed = true
-		Tween(card, { GroupTransparency = 1 }, .22)
-		Tween(wrap, { Size = UDim2.new(1, 0, 0, 0) }, .2)
-		task.wait(.24)
+		Tween(card, { GroupTransparency = 1, Position = UDim2.fromOffset(0, 10) }, .25)
+		Tween(wrap, { Size = UDim2.new(1, 0, 0, 0) }, .22)
+		task.wait(.26)
 		if wrap.Parent then wrap:Destroy() end
 	end
 	click.MouseButton1Click:Connect(close)
-	wrap.Size = UDim2.new(1, 0, 0, h)
-	Tween(card, { GroupTransparency = 0 }, .32, Back)
+	-- Slide up + fade in
+	Tween(wrap, { Size = UDim2.new(1, 0, 0, h) }, .28, Quint)
+	Tween(card, { GroupTransparency = 0, Position = UDim2.fromOffset(0, 0) }, .4, Back)
 	Tween(fill, { Size = UDim2.new(0, 0, 1, 0) }, dur, Linear)
 	task.delay(dur, close)
 end
@@ -1364,13 +1372,15 @@ function Container:AddDropdown(o)
 	Press(box)
 	local txt = Label({ Position = UDim2.fromOffset(11, 0), Size = UDim2.new(1, -36, 1, 0), TextColor3 = Theme.SubText, TextTruncate = Enum.TextTruncate.AtEnd, Parent = box })
 	local arrow = Label({
-		Text = o.Multi and "+" or "▾",
-		TextSize = o.Multi and 14 or 11,
+		Text = o.Multi and "+" or "▼",
+		FontFace = Fonts.Medium,
+		TextSize = o.Multi and 13 or 9,
 		TextColor3 = Theme.SubText,
 		AnchorPoint = Vector2.new(.5, .5),
 		Position = UDim2.new(1, -14, .5, 0),
-		Size = UDim2.fromOffset(12, 12),
+		Size = UDim2.fromOffset(14, 14),
 		TextXAlignment = Enum.TextXAlignment.Center,
+		TextYAlignment = Enum.TextYAlignment.Center,
 		Parent = box,
 	})
 	self:_Add(D, row, o.Name, o)
@@ -1652,17 +1662,27 @@ function TabMethods:AddSection(o)
 	local frame = Frame({ Size = UDim2.new(1, 0, 0, 0), AutomaticSize = Enum.AutomaticSize.Y, BackgroundColor3 = Theme.Panel, ZIndex = 2, Parent = wrap })
 	Corner(frame, 7)
 	Stroke(frame, Theme.Stroke, 1, .78)
-	-- Soft ambient shadow (offset down, high transparency — no sharp strip)
+	-- Soft rounded fade shadow under the section
 	local sh = Frame({
-		Position = UDim2.fromOffset(0, 5),
-		Size = UDim2.new(1, 0, 1, 2),
+		AnchorPoint = Vector2.new(.5, 0),
+		Position = UDim2.new(.5, 0, 1, 0),
+		Size = UDim2.new(1, -6, 0, 8),
 		BackgroundColor3 = Color3.new(0, 0, 0),
-		BackgroundTransparency = .78,
+		BackgroundTransparency = .55,
 		BorderSizePixel = 0,
 		ZIndex = 0,
 		Parent = wrap,
 	})
-	Corner(sh, 8)
+	Corner(sh, 6)
+	Create("UIGradient", {
+		Rotation = 90,
+		Transparency = NumberSequence.new({
+			NumberSequenceKeypoint.new(0, .35),
+			NumberSequenceKeypoint.new(.5, .7),
+			NumberSequenceKeypoint.new(1, 1),
+		}),
+		Parent = sh,
+	})
 	List(frame, 0)
 	local named = S.Name ~= ""
 	-- Title is display-only — sections cannot be collapsed
@@ -1739,16 +1759,20 @@ function Window:OpenPopup(anchor, size, onClose)
 	local blocker = Button({ Size = UDim2.fromScale(1, 1), Parent = ov })
 	blocker.MouseButton1Click:Connect(function() self:ClosePopup() end)
 	blocker.MouseButton2Click:Connect(function() self:ClosePopup() end)
-	local sc = math.max(self.Scale.Scale, .01)
-	local ap = (anchor.AbsolutePosition - ov.AbsolutePosition) / sc
-	local as = anchor.AbsoluteSize / sc
-	local ovs = ov.AbsoluteSize / sc
 	local w, h = size.X.Offset, size.Y.Offset
-	-- Center under the trigger; clamp to overlay bounds
-	local x = ap.X + (as.X - w) * .5
-	x = math.clamp(x, 4, math.max(4, ovs.X - w - 4))
-	local y = ap.Y + as.Y + 4
-	if y + h > ovs.Y - 4 then y = math.max(4, ap.Y - h - 4) end
+	local function place()
+		local sc = math.max(self.Scale.Scale, .01)
+		local ap = (anchor.AbsolutePosition - ov.AbsolutePosition) / sc
+		local as = anchor.AbsoluteSize / sc
+		local ovs = ov.AbsoluteSize / sc
+		-- Match trigger width so center == left-align; otherwise true center
+		local x = ap.X + (as.X - w) * 0.5
+		x = math.clamp(x, 2, math.max(2, ovs.X - w - 2))
+		local y = ap.Y + as.Y + 3
+		if y + h > ovs.Y - 2 then y = math.max(2, ap.Y - h - 3) end
+		return x, y
+	end
+	local x, y = place()
 	local pop = Frame({
 		Position = UDim2.fromOffset(x, y),
 		Size = UDim2.fromOffset(w, 0),
@@ -1758,17 +1782,30 @@ function Window:OpenPopup(anchor, size, onClose)
 	})
 	Corner(pop, 6)
 	Stroke(pop, Theme.Stroke, 1, .2)
+	-- Re-center after layout settles (fixes offset under scaled / column layouts)
+	task.defer(function()
+		if not pop.Parent then return end
+		local nx, ny = place()
+		pop.Position = UDim2.fromOffset(nx, ny)
+	end)
 	Tween(pop, { Size = UDim2.fromOffset(w, h) }, .22)
 	self.Popup = { Blocker = blocker, Frame = pop, OnClose = onClose }
 	return pop
 end
 
 function Window:_MoveIndicator(tab, instant)
-	if not tab or not tab.Button then return end
+	if not tab or not tab.Button or not self.Indicator then return end
 	local btn = tab.Button
-	local rel = (btn.AbsolutePosition + btn.AbsoluteSize / 2 - self.Header.AbsolutePosition) / math.max(self.Scale.Scale, .01)
-	local pos = UDim2.fromOffset(rel.X, HEADER_H - 3)
-	if instant then self.Indicator.Position = pos else Tween(self.Indicator, { Position = pos }, .45) end
+	local sc = math.max(self.Scale.Scale, .01)
+	local hdr = self.Header
+	-- Center under the tab button, flush to the bottom of the header
+	local midX = (btn.AbsolutePosition.X + btn.AbsoluteSize.X * .5 - hdr.AbsolutePosition.X) / sc
+	local pos = UDim2.fromOffset(midX, HEADER_H - 2)
+	if instant then
+		self.Indicator.Position = pos
+	else
+		Tween(self.Indicator, { Position = pos }, .35)
+	end
 end
 
 function Window:SetOpen(open)
@@ -1918,7 +1955,9 @@ function Window:AddTab(o)
 end
 
 function Window:CreateSettingsTab()
+	if self._SettingsTab then return self._SettingsTab end
 	local tab = self:AddTab({ Name = "Settings", Icon = "settings" })
+	self._SettingsTab = tab
 	local menu = tab:AddSection({ Name = "Menu", Side = "Left" })
 	menu:AddKeybind({ Name = "Menu key", Default = self.Keybind, Mode = "Always", NoList = true, NoState = true, NoSave = true,
 		KeyChanged = function(k) self.Keybind = k end })
@@ -1943,7 +1982,7 @@ function Window:CreateSettingsTab()
 		local items = {}
 		for _, n in ipairs(Config:List()) do
 			local info = Config:Info(n)
-			table.insert(items, { Name = n, Right = info and info.saved and os.date("%d/%m %H:%M", info.saved) or "", Tag = n == auto and "AUTO" or nil })
+			table.insert(items, { Name = n, Right = info and info.saved and os.date("%d/%m %H:%M", info.saved) or "" })
 		end
 		list:SetItems(items)
 		if select then list:Select(select, true) end
@@ -2117,9 +2156,21 @@ function Blush:CreateWindow(cfg)
 	W.TabHolder = Frame({ AnchorPoint = Vector2.new(1, .5), Position = UDim2.new(1, -14, .5, -1), Size = UDim2.fromOffset(0, 30), AutomaticSize = Enum.AutomaticSize.X, Parent = header })
 	local tl = List(W.TabHolder, 6, Enum.FillDirection.Horizontal)
 	tl.VerticalAlignment = Enum.VerticalAlignment.Center
-	W.Indicator = Frame({ AnchorPoint = Vector2.new(.5, 1), Size = UDim2.fromOffset(16, 3), BackgroundColor3 = WHITE, Position = UDim2.fromOffset(0, HEADER_H - 3), Parent = header })
+	W.Indicator = Frame({
+		AnchorPoint = Vector2.new(.5, 1),
+		Size = UDim2.fromOffset(18, 3),
+		BackgroundColor3 = WHITE,
+		Position = UDim2.fromOffset(0, HEADER_H - 2),
+		ZIndex = 6,
+		Parent = header,
+	})
 	Corner(W.Indicator, 2)
-	W.TabHolder:GetPropertyChangedSignal("AbsoluteSize"):Connect(function() if W.ActiveTab then W:_MoveIndicator(W.ActiveTab, true) end end)
+	W.TabHolder:GetPropertyChangedSignal("AbsoluteSize"):Connect(function()
+		if W.ActiveTab then W:_MoveIndicator(W.ActiveTab, true) end
+	end)
+	W.TabHolder:GetPropertyChangedSignal("AbsolutePosition"):Connect(function()
+		if W.ActiveTab then W:_MoveIndicator(W.ActiveTab, true) end
+	end)
 	Draggable(header, main)
 
 	W.Body = Frame({ Position = UDim2.fromOffset(0, HEADER_H), Size = UDim2.new(1, 0, 1, -(HEADER_H + FOOTER_H)), ClipsDescendants = true, Parent = main })
@@ -2191,11 +2242,15 @@ function Blush:CreateWindow(cfg)
 	sbox.FocusLost:Connect(function() Tween(sbox, { BackgroundColor3 = Theme.Element }, .15) end)
 	sbox:GetPropertyChangedSignal("Text"):Connect(function() W:Search(sbox.Text) end)
 
+	-- Settings / config tab is always built-in
+	if cfg.SettingsTab ~= false then
+		W:CreateSettingsTab()
+	end
+
 	table.insert(self.Windows, W)
 	W:SetOpen(cfg.Open ~= false)
 	if cfg.AutoLoad ~= false then task.defer(function() Config:AutoLoad() end) end
 	if cfg.Watermark == false then self:SetWatermark(false) end
-	if cfg.BindList then self:SetBindList(true) end
 	return W
 end
 
