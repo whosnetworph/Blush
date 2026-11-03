@@ -240,10 +240,11 @@ function Blush:_Flag(el, flag)
 	self.Options[flag] = el
 end
 
-local Icons = { Module = nil, Failed = false }
+local Icons = { Module = nil, Failed = false, Molto = nil, MoltoFailed = false }
 local IconAlias = {
 	mouse = "mouse-pointer-2", aim = "crosshair", visuals = "eye", colors = "palette", colours = "palette",
 	settings = "settings", gear = "settings", misc = "sliders-horizontal", sliders = "sliders-horizontal",
+	search = "search", rifle = "crosshair", pistol = "target", sniper = "crosshair", smg = "zap",
 }
 
 local function ResolveIcon(name)
@@ -255,6 +256,34 @@ local function ResolveIcon(name)
 		local ok, r = pcall(Blush.IconProvider, n)
 		if ok and r then return r end
 	end
+	-- Prefer Molto icon registry (lucide / tabler / heroicons / solar / material / fluent / phosphor)
+	if not Icons.Molto and not Icons.MoltoFailed then
+		local ok, m = pcall(function()
+			return loadstring(game:HttpGet("https://molto.pages.dev/source.lua"))()
+		end)
+		if ok and type(m) == "table" then
+			Icons.Molto = m
+			pcall(function()
+				if m.SetProvider then m.SetProvider("lucide") end
+			end)
+		else
+			Icons.MoltoFailed = true
+		end
+	end
+	if Icons.Molto then
+		local ok, asset = pcall(function()
+			if Icons.Molto.GetAsset then
+				return Icons.Molto.GetAsset(n)
+			elseif Icons.Molto.get then
+				return Icons.Molto.get(n)
+			end
+		end)
+		if ok and asset then
+			if type(asset) == "table" then return asset end
+			if type(asset) == "string" then return asset end
+		end
+	end
+	-- Fallback: melatonin lucide-luau
 	if not Icons.Module and not Icons.Failed then
 		local ok, m = pcall(function()
 			return loadstring(game:HttpGet("https://cdn.jsdelivr.net/gh/melatonin-rs/lucide-luau@main/src/init.luau"))()
@@ -499,8 +528,16 @@ function Blush:_Init()
 		end
 	end)
 
-	self.NotifHolder = Frame({ Position = UDim2.fromOffset(16, 64), Size = UDim2.new(0, 310, 1, -84), Parent = gui })
-	List(self.NotifHolder, 8)
+	self.NotifHolder = Frame({
+		AnchorPoint = Vector2.new(0, 1),
+		Position = UDim2.new(0, 16, 1, -16),
+		Size = UDim2.new(0, 310, 0, 0),
+		AutomaticSize = Enum.AutomaticSize.Y,
+		Parent = gui,
+	})
+	local nl = List(self.NotifHolder, 8)
+	nl.VerticalAlignment = Enum.VerticalAlignment.Bottom
+	nl.HorizontalAlignment = Enum.HorizontalAlignment.Left
 	self:_BuildHUD()
 end
 
@@ -510,13 +547,29 @@ function Blush:_BuildHUD()
 
 	local wm = Frame({ Name = "Watermark", Position = UDim2.fromOffset(16, 16), Size = UDim2.fromOffset(0, 32),
 		AutomaticSize = Enum.AutomaticSize.X, BackgroundColor3 = Theme.Panel, Parent = gui })
-	Corner(wm, 7) Stroke(wm, Theme.Stroke, 1, .3)
+	Corner(wm, 7) Stroke(wm, Theme.Stroke, 1, .35)
+	-- Engraved accent line inset into the top of the watermark
+	local line = Frame({
+		Position = UDim2.fromOffset(10, 0),
+		Size = UDim2.new(1, -20, 0, 2),
+		BackgroundColor3 = WHITE,
+		ZIndex = 2,
+		Parent = wm,
+	})
+	Corner(line, 1)
+	AccentGradient(line)
+	-- Subtle inner shadow under the line for engraved feel
+	local lineShade = Frame({
+		Position = UDim2.fromOffset(10, 2),
+		Size = UDim2.new(1, -20, 0, 1),
+		BackgroundColor3 = Color3.new(0, 0, 0),
+		BackgroundTransparency = .72,
+		Parent = wm,
+	})
 	local row = Frame({ Size = UDim2.fromOffset(0, 32), AutomaticSize = Enum.AutomaticSize.X, Parent = wm })
 	local rl = List(row, 10, Enum.FillDirection.Horizontal)
 	rl.VerticalAlignment = Enum.VerticalAlignment.Center
-	Pad(row, 2, 0, 14, 14)
-	local line = Frame({ Position = UDim2.fromOffset(8, 0), Size = UDim2.new(1, -16, 0, 2), BackgroundColor3 = WHITE, Parent = wm })
-	Corner(line, 1) AccentGradient(line)
+	Pad(row, 3, 0, 14, 14)
 
 	local order = 0
 	local function seg(text, bold)
@@ -559,16 +612,30 @@ function Blush:_BuildHUD()
 		end
 	end)
 
-	local bl = Frame({ Name = "Binds", Position = UDim2.fromOffset(16, 320), Size = UDim2.fromOffset(200, 0),
+	local bl = Frame({ Name = "Binds", Position = UDim2.fromOffset(16, 320), Size = UDim2.fromOffset(210, 0),
 		AutomaticSize = Enum.AutomaticSize.Y, BackgroundColor3 = Theme.Panel, Visible = false, Parent = gui })
-	Corner(bl, 7) Stroke(bl, Theme.Stroke, 1, .3)
+	Corner(bl, 7) Stroke(bl, Theme.Stroke, 1, .35)
 	List(bl, 0)
-	local bline = Frame({ Position = UDim2.fromOffset(8, 0), Size = UDim2.new(1, -16, 0, 2), BackgroundColor3 = WHITE, Parent = bl })
-	Corner(bline, 1) AccentGradient(bline)
-	Label({ Text = "Binds", FontFace = Fonts.Bold, TextSize = 16, TextXAlignment = Enum.TextXAlignment.Center,
-		Size = UDim2.new(1, 0, 0, 36), LayoutOrder = 1, Parent = bl })
+	local bline = Frame({
+		Position = UDim2.fromOffset(10, 0),
+		Size = UDim2.new(1, -20, 0, 2),
+		BackgroundColor3 = WHITE,
+		ZIndex = 2,
+		Parent = bl,
+	})
+	Corner(bline, 1)
+	AccentGradient(bline)
+	local blineShade = Frame({
+		Position = UDim2.fromOffset(10, 2),
+		Size = UDim2.new(1, -20, 0, 1),
+		BackgroundColor3 = Color3.new(0, 0, 0),
+		BackgroundTransparency = .72,
+		Parent = bl,
+	})
+	Label({ Text = "Binds", FontFace = Fonts.Bold, TextSize = 15, TextXAlignment = Enum.TextXAlignment.Center,
+		Size = UDim2.new(1, 0, 0, 34), LayoutOrder = 1, Parent = bl })
 	local rows = Frame({ Size = UDim2.new(1, 0, 0, 0), AutomaticSize = Enum.AutomaticSize.Y, LayoutOrder = 2, Parent = bl })
-	List(rows, 2) Pad(rows, 0, 8, 14, 14)
+	List(rows, 2) Pad(rows, 0, 10, 12, 12)
 	self.BindListFrame, self.BindRows = bl, rows
 	Draggable(bl, bl, true)
 	self.BindListEnabled = false
@@ -579,7 +646,8 @@ function Blush:_RefreshBinds()
 	if not rows then return end
 	local want = {}
 	for i, k in ipairs(self.Keybinds) do
-		if k.Key and k.State and not k.NoList then want[k] = i end
+		-- Show every bind that has a key assigned (always visible, not only when active)
+		if k.Key and not k.NoList then want[k] = i end
 	end
 	for k, r in pairs(self._BindMap) do
 		if not want[k] then
@@ -587,26 +655,65 @@ function Blush:_RefreshBinds()
 			r.Frame.ClipsDescendants = true
 			Tween(r.Name, { TextTransparency = 1 }, .15)
 			Tween(r.Mode, { TextTransparency = 1 }, .15)
+			Tween(r.Key, { TextTransparency = 1 }, .15)
 			Tween(r.Frame, { Size = UDim2.new(1, 0, 0, 0) }, .2)
-			task.delay(.22, function() r.Frame:Destroy() end)
+			task.delay(.22, function() if r.Frame then r.Frame:Destroy() end end)
 		end
 	end
 	for k, order in pairs(want) do
 		local r = self._BindMap[k]
+		local keyText = KeyName(k.Key)
+		local modeText = k.Mode or "Toggle"
+		local active = k.State
 		if not r then
 			local f = Frame({ Size = UDim2.new(1, 0, 0, 0), LayoutOrder = order, ClipsDescendants = true, Parent = rows })
-			local n = Label({ Text = k.Name, FontFace = Fonts.Bold, TextSize = 15, TextTransparency = 1, TextTruncate = Enum.TextTruncate.AtEnd,
-				Size = UDim2.new(.62, 0, 1, 0), Parent = f })
-			local m = Label({ Text = k.Mode, TextColor3 = Theme.SubText, TextSize = 14, TextTransparency = 1,
-				TextXAlignment = Enum.TextXAlignment.Right, Position = UDim2.fromScale(.62, 0), Size = UDim2.fromScale(.38, 1), Parent = f })
-			r = { Frame = f, Name = n, Mode = m }
+			local n = Label({
+				Text = k.Name,
+				FontFace = Fonts.Bold,
+				TextSize = 13,
+				TextTransparency = 1,
+				TextTruncate = Enum.TextTruncate.AtEnd,
+				Size = UDim2.new(.48, 0, 1, 0),
+				Parent = f,
+			})
+			local m = Label({
+				Text = modeText,
+				TextColor3 = Theme.SubText,
+				TextSize = 11,
+				TextTransparency = 1,
+				TextXAlignment = Enum.TextXAlignment.Right,
+				Position = UDim2.fromScale(.48, 0),
+				Size = UDim2.fromScale(.26, 1),
+				Parent = f,
+			})
+			local keyLbl = Label({
+				Text = keyText,
+				FontFace = Fonts.Medium,
+				TextColor3 = Theme.Accent,
+				TextSize = 12,
+				TextTransparency = 1,
+				TextXAlignment = Enum.TextXAlignment.Right,
+				Position = UDim2.fromScale(.74, 0),
+				Size = UDim2.fromScale(.26, 1),
+				Parent = f,
+			})
+			r = { Frame = f, Name = n, Mode = m, Key = keyLbl }
 			self._BindMap[k] = r
-			Tween(f, { Size = UDim2.new(1, 0, 0, 24) }, .25)
+			Tween(f, { Size = UDim2.new(1, 0, 0, 22) }, .25)
 			Tween(n, { TextTransparency = 0 }, .25)
 			Tween(m, { TextTransparency = 0 }, .25)
+			Tween(keyLbl, { TextTransparency = 0 }, .25)
 		end
 		r.Frame.LayoutOrder = order
-		r.Mode.Text = k.Mode
+		r.Mode.Text = modeText
+		r.Key.Text = keyText
+		-- Dim inactive binds slightly so active ones stand out
+		local nameCol = active and Theme.Text or Theme.SubText
+		local modeCol = active and Theme.SubText or Color3.fromRGB(100, 106, 124)
+		local keyCol = active and Theme.Accent or Color3.fromRGB(160, 90, 180)
+		r.Name.TextColor3 = nameCol
+		r.Mode.TextColor3 = modeCol
+		r.Key.TextColor3 = keyCol
 	end
 end
 
@@ -731,14 +838,14 @@ local function MakeKeybind(container, parent, o, name, owner)
 	Pad(btn, 0, 0, 7, 7)
 	Create("UISizeConstraint", { MinSize = Vector2.new(26, 20), Parent = btn })
 	Press(btn)
-	btn.MouseEnter:Connect(function() if not K.Listening then Tween(st, { Color = Theme.Accent2 }, .15) end end)
-	btn.MouseLeave:Connect(function() if not K.Listening then Tween(st, { Color = Theme.Stroke }, .15) end end)
+	btn.MouseEnter:Connect(function() if not K.Listening then Tween(st, { Color = Theme.Accent2, Transparency = .2 }, .15) end end)
+	btn.MouseLeave:Connect(function() if not K.Listening then Tween(st, { Color = Theme.Stroke, Transparency = 0 }, .15) end end)
 	table.insert(Blush.Keybinds, K)
 
 	function K:_Bind(key)
 		self.Listening = false
 		Blush.Listening = nil
-		Tween(st, { Color = Theme.Stroke }, .2)
+		Tween(st, { Color = Theme.Stroke, Transparency = 0 }, .2)
 		self:SetKey(key)
 	end
 	function K:SetKey(key)
@@ -783,7 +890,7 @@ local function MakeKeybind(container, parent, o, name, owner)
 		Blush.Listening = K
 		btn.Text = "..."
 		Tween(btn, { TextColor3 = Theme.Accent }, .15)
-		Tween(st, { Color = Theme.Accent }, .15)
+		Tween(st, { Color = Theme.Accent, Transparency = .35 }, .15)
 	end)
 	btn.MouseButton2Click:Connect(function()
 		if K.NoState then return end
@@ -941,18 +1048,54 @@ function Container:AddToggle(o)
 	o = o or {}
 	local T = { Type = "Toggle", Value = false }
 	local row = Frame({ Size = UDim2.new(1, 0, 0, 24), Parent = self.Inner })
-	local box = Frame({ AnchorPoint = Vector2.new(0, .5), Position = UDim2.fromScale(0, .5), Size = UDim2.fromOffset(18, 18), BackgroundColor3 = Theme.Element, Parent = row })
+	local box = Frame({
+		AnchorPoint = Vector2.new(0, .5),
+		Position = UDim2.fromScale(0, .5),
+		Size = UDim2.fromOffset(18, 18),
+		BackgroundColor3 = Theme.Element,
+		Parent = row,
+	})
 	Corner(box, 5)
 	local bs = Stroke(box, Theme.Stroke, 1)
 	local bscale = Create("UIScale", { Parent = box })
 	local fill = Frame({ Size = UDim2.fromScale(1, 1), BackgroundColor3 = WHITE, BackgroundTransparency = 1, Parent = box })
-	Corner(fill, 5) AccentGradient(fill, 45)
-	local tick = Frame({ AnchorPoint = Vector2.new(.5, .5), Position = UDim2.fromScale(.5, .5), Size = UDim2.fromOffset(18, 18), Parent = box })
+	Corner(fill, 5)
+	AccentGradient(fill, 45)
+	-- Cleaner, tighter checkmark
+	local tick = Frame({
+		AnchorPoint = Vector2.new(.5, .5),
+		Position = UDim2.fromScale(.5, .5),
+		Size = UDim2.fromOffset(18, 18),
+		Parent = box,
+	})
 	local tscale = Create("UIScale", { Scale = 0, Parent = tick })
-	local c1 = Frame({ AnchorPoint = Vector2.new(.5, .5), Position = UDim2.fromOffset(6.5, 10.5), Size = UDim2.fromOffset(2.4, 5.5), Rotation = -45, BackgroundColor3 = WHITE, Parent = tick })
-	local c2 = Frame({ AnchorPoint = Vector2.new(.5, .5), Position = UDim2.fromOffset(10.8, 8.6), Size = UDim2.fromOffset(2.4, 10), Rotation = 45, BackgroundColor3 = WHITE, Parent = tick })
-	Corner(c1, 2) Corner(c2, 2)
-	local lbl = Label({ Text = o.Name or "", Position = UDim2.fromOffset(28, 0), Size = UDim2.new(1, -28, 1, 0), TextColor3 = Theme.SubText, Parent = row })
+	-- Short leg of the check
+	local c1 = Frame({
+		AnchorPoint = Vector2.new(.5, .5),
+		Position = UDim2.fromOffset(6.2, 10.2),
+		Size = UDim2.fromOffset(2.2, 5.2),
+		Rotation = -45,
+		BackgroundColor3 = WHITE,
+		Parent = tick,
+	})
+	-- Long leg of the check
+	local c2 = Frame({
+		AnchorPoint = Vector2.new(.5, .5),
+		Position = UDim2.fromOffset(10.6, 8.4),
+		Size = UDim2.fromOffset(2.2, 9.4),
+		Rotation = 45,
+		BackgroundColor3 = WHITE,
+		Parent = tick,
+	})
+	Corner(c1, 1.5)
+	Corner(c2, 1.5)
+	local lbl = Label({
+		Text = o.Name or "",
+		Position = UDim2.fromOffset(28, 0),
+		Size = UDim2.new(1, -28, 1, 0),
+		TextColor3 = Theme.SubText,
+		Parent = row,
+	})
 	local hit = Button({ Size = UDim2.fromScale(1, 1), Parent = row })
 	self:_Add(T, row, o.Name, o)
 
@@ -963,7 +1106,7 @@ function Container:AddToggle(o)
 		Tween(fill, { BackgroundTransparency = v and 0 or 1 }, .2)
 		Tween(bs, { Transparency = v and 1 or 0 }, .2)
 		Tween(lbl, { TextColor3 = v and Theme.Text or Theme.SubText }, .2)
-		Tween(tscale, { Scale = v and 1 or 0 }, v and .4 or .15, v and Back or Quint)
+		Tween(tscale, { Scale = v and 1 or 0 }, v and .35 or .12, v and Back or Quint)
 		if self.Flag then Blush.Flags[self.Flag] = v end
 		if self.Keybind then self.Keybind:_Sync(v) end
 		if changed and not silent then self:_Fire(v) end
@@ -972,8 +1115,8 @@ function Container:AddToggle(o)
 	function T:Load(v) self:SetValue(v == true) end
 	hit.MouseEnter:Connect(function() if not T.Value then Tween(bs, { Color = Theme.Accent2 }, .15) end end)
 	hit.MouseLeave:Connect(function() Tween(bs, { Color = Theme.Stroke }, .15) end)
-	hit.MouseButton1Down:Connect(function() Tween(bscale, { Scale = .85 }, .08) end)
-	local function up() Tween(bscale, { Scale = 1 }, .35, Back) end
+	hit.MouseButton1Down:Connect(function() Tween(bscale, { Scale = .88 }, .08) end)
+	local function up() Tween(bscale, { Scale = 1 }, .3, Back) end
 	hit.MouseButton1Up:Connect(up)
 	hit.MouseLeave:Connect(up)
 	hit.MouseButton1Click:Connect(function() T:SetValue(not T.Value) end)
@@ -1233,19 +1376,27 @@ function Container:AddDropdown(o)
 	function D:Save() if self.Multi then return selected() end return self.Value end
 	function D:Load(v) self:SetValue(v) end
 
-	box.MouseEnter:Connect(function() Tween(st, { Color = Theme.Accent2 }, .15) end)
-	box.MouseLeave:Connect(function() if not D.IsOpen then Tween(st, { Color = Theme.Stroke }, .15) end end)
+	box.MouseEnter:Connect(function() if not D.IsOpen then Tween(st, { Color = Theme.Accent2, Transparency = .15 }, .15) end end)
+	box.MouseLeave:Connect(function() if not D.IsOpen then Tween(st, { Color = Theme.Stroke, Transparency = 0 }, .15) end end)
 	box.MouseButton1Click:Connect(function()
 		if D.IsOpen then window:ClosePopup() return end
 		D.IsOpen = true
-		local rows = math.clamp(#D.Values, 1, o.MaxVisible or 6)
-		local searchH = o.Search and 32 or 0
-		local pop = window:OpenPopup(box, UDim2.fromOffset(box.AbsoluteSize.X / window.Scale.Scale, searchH + rows * 26 + 10), function()
+		-- Size tightly to actual option count (no empty space)
+		local count = math.max(#D.Values, 1)
+		local rows = math.min(count, o.MaxVisible or 8)
+		local searchH = o.Search and 34 or 0
+		local itemH = 26
+		local padH = 10
+		local h = searchH + rows * itemH + padH
+		local popW = box.AbsoluteSize.X / math.max(window.Scale.Scale, .01)
+		local pop = window:OpenPopup(box, UDim2.fromOffset(popW, h), function()
 			D.IsOpen = false
-			Tween(st, { Color = Theme.Stroke }, .2)
+			-- No heavy focus border after close
+			Tween(st, { Color = Theme.Stroke, Transparency = 0 }, .2)
 			Tween(arrow, { Rotation = 0 }, .25)
 		end)
-		Tween(st, { Color = Theme.Accent }, .15)
+		-- Subtle accent only while open, no thick selected border
+		Tween(st, { Color = Theme.Accent, Transparency = .35 }, .15)
 		Tween(arrow, { Rotation = o.Multi and 45 or 180 }, .25)
 		local sb
 		if o.Search then
@@ -1414,13 +1565,26 @@ function TabMethods:AddSection(o)
 	local S = setmetatable({ Name = o.Name or "", Tab = self, Window = self.Window, Elements = {} }, Container)
 	S.Section = S
 	local wrap = Frame({ Size = UDim2.new(1, 0, 0, 0), AutomaticSize = Enum.AutomaticSize.Y, Parent = parent })
-	for i, tr in ipairs({ .88, .93, .97 }) do
-		local s = i * 3
-		local sh = Frame({ Position = UDim2.fromOffset(-s, -s + 3), Size = UDim2.new(1, s * 2, 1, s * 2), BackgroundColor3 = Color3.new(0, 0, 0), BackgroundTransparency = tr, Parent = wrap })
-		Corner(sh, 6 + s)
+	-- Soft multi-layer drop shadow (more natural than hard offset stacks)
+	local shadowLayers = {
+		{ offset = 1, size = 2, tr = .78 },
+		{ offset = 3, size = 6, tr = .86 },
+		{ offset = 6, size = 12, tr = .92 },
+		{ offset = 10, size = 20, tr = .96 },
+	}
+	for _, layer in ipairs(shadowLayers) do
+		local sh = Frame({
+			Position = UDim2.fromOffset(-layer.size / 2, layer.offset),
+			Size = UDim2.new(1, layer.size, 1, layer.size),
+			BackgroundColor3 = Color3.new(0, 0, 0),
+			BackgroundTransparency = layer.tr,
+			Parent = wrap,
+		})
+		Corner(sh, 8 + layer.size / 3)
 	end
 	local frame = Frame({ Size = UDim2.new(1, 0, 0, 0), AutomaticSize = Enum.AutomaticSize.Y, BackgroundColor3 = Theme.Panel, Parent = wrap })
-	Corner(frame, 6) Stroke(frame, Theme.Stroke, 1, .55)
+	Corner(frame, 7)
+	Stroke(frame, Theme.Stroke, 1, .5)
 	List(frame, 0)
 	local named = S.Name ~= ""
 	local title = Button({ Size = UDim2.new(1, 0, 0, named and 36 or 8), Text = S.Name, FontFace = Fonts.Bold, TextSize = 15,
@@ -1495,12 +1659,20 @@ function Window:OpenPopup(anchor, size, onClose)
 	local as = anchor.AbsoluteSize / sc
 	local ovs = ov.AbsoluteSize / sc
 	local w, h = size.X.Offset, size.Y.Offset
-	local x = math.clamp(ap.X, 4, math.max(4, ovs.X - w - 4))
-	local y = ap.Y + as.Y + 4
-	if y + h > ovs.Y - 4 then y = math.max(4, ap.Y - h - 4) end
-	local pop = Frame({ Position = UDim2.fromOffset(x, y), Size = UDim2.fromOffset(w, 0), BackgroundColor3 = Theme.Panel, ClipsDescendants = true, Parent = ov })
-	Corner(pop, 6) Stroke(pop, Theme.Stroke, 1)
-	Tween(pop, { Size = UDim2.fromOffset(w, h) }, .25)
+	-- Center the popup horizontally under the anchor
+	local x = math.clamp(ap.X + (as.X - w) / 2, 4, math.max(4, ovs.X - w - 4))
+	local y = ap.Y + as.Y + 5
+	if y + h > ovs.Y - 4 then y = math.max(4, ap.Y - h - 5) end
+	local pop = Frame({
+		Position = UDim2.fromOffset(x, y),
+		Size = UDim2.fromOffset(w, 0),
+		BackgroundColor3 = Theme.Panel,
+		ClipsDescendants = true,
+		Parent = ov,
+	})
+	Corner(pop, 6)
+	Stroke(pop, Theme.Stroke, 1, .2)
+	Tween(pop, { Size = UDim2.fromOffset(w, h) }, .22)
 	self.Popup = { Blocker = blocker, Frame = pop, OnClose = onClose }
 	return pop
 end
@@ -1741,7 +1913,7 @@ function Blush:CreateWindow(cfg)
 	if cfg.PerGame ~= nil then Config.PerGame = cfg.PerGame end
 	self:_Init()
 	local size = cfg.Size or Vector2.new(660, 580)
-	local W = setmetatable({ Tabs = {}, Open = false, Keybind = cfg.Keybind or Enum.KeyCode.Insert, Name = cfg.Name or "Blush" }, Window)
+	local W = setmetatable({ Tabs = {}, Open = false, Keybind = cfg.Keybind or Enum.KeyCode.LeftAlt, Name = cfg.Name or "Blush" }, Window)
 
 	local main = Make("CanvasGroup", { Name = "Main", BorderSizePixel = 0, BackgroundColor3 = Theme.Background, AnchorPoint = Vector2.new(.5, .5),
 		Position = UDim2.fromScale(.5, .5), Size = UDim2.fromOffset(size.X, size.Y), GroupTransparency = 1, Visible = false, Parent = self.Gui })
@@ -1821,8 +1993,8 @@ function Blush:CreateWindow(cfg)
 			task.delay(.26, function() if not sopen then sbox.Visible = false end end)
 		end
 	end)
-	sbox.Focused:Connect(function() Tween(sst, { Color = Theme.Accent }, .2) end)
-	sbox.FocusLost:Connect(function() Tween(sst, { Color = Theme.Stroke }, .2) end)
+	sbox.Focused:Connect(function() Tween(sst, { Color = Theme.Accent, Transparency = .4 }, .2) end)
+	sbox.FocusLost:Connect(function() Tween(sst, { Color = Theme.Stroke, Transparency = 0 }, .2) end)
 	sbox:GetPropertyChangedSignal("Text"):Connect(function() W:Search(sbox.Text) end)
 
 	table.insert(self.Windows, W)
