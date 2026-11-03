@@ -1182,14 +1182,6 @@ function Container:AddSlider(o)
 	Stroke(edit, Theme.Stroke, 1)
 	local track = Frame({ Position = UDim2.fromOffset(0, 27), Size = UDim2.new(1, 0, 0, 4), BackgroundColor3 = Theme.Element, Parent = row })
 	Corner(track, 2)
-	-- soft glow layers sit behind the fill and follow it
-	local glows = {}
-	for _, gl in ipairs({ { 12, .9 }, { 7, .8 } }) do
-		local g = Frame({ AnchorPoint = Vector2.new(0, .5), Position = UDim2.new(0, -2, .5, 0), Size = UDim2.new(0, 0, 0, gl[1]),
-			BackgroundColor3 = WHITE, BackgroundTransparency = gl[2], Parent = track })
-		Corner(g, 6) AccentGradient(g)
-		table.insert(glows, { g, gl[1] })
-	end
 	local fill = Frame({ Size = UDim2.fromScale(0, 1), BackgroundColor3 = WHITE, Parent = track })
 	Corner(fill, 2) AccentGradient(fill)
 	local knob = Frame({ AnchorPoint = Vector2.new(.5, .5), Position = UDim2.fromScale(0, .5), Size = UDim2.fromOffset(0, 0), BackgroundColor3 = WHITE, Parent = track })
@@ -1210,9 +1202,6 @@ function Container:AddSlider(o)
 		self.Value = v
 		local pct = (v - self.Min) / math.max(self.Max - self.Min, 1e-9)
 		Tween(fill, { Size = UDim2.fromScale(pct, 1) }, .12, Sine)
-		for _, g in ipairs(glows) do
-			Tween(g[1], { Size = UDim2.new(pct, pct > 0 and 4 or 0, 0, g[2]) }, .12, Sine)
-		end
 		Tween(knob, { Position = UDim2.fromScale(pct, .5) }, .12, Sine)
 		val.Text = fmt(v)
 		if self.Flag then Blush.Flags[self.Flag] = v end
@@ -1458,7 +1447,7 @@ function Container:AddDropdown(o)
 			h = searchH + count * itemH + padH
 		end
 		local sc = math.max(window.Scale.Scale, .01)
-		local popW = math.max(box.AbsoluteSize.X / sc, 60)
+		local popW = 0 -- real width is taken from the button when the popup is placed
 		local pop = window:OpenPopup(box, UDim2.fromOffset(popW, h), function()
 			D.IsOpen = false
 			Tween(arrow, { Rotation = 0 }, .2)
@@ -1764,11 +1753,17 @@ function Window:OpenPopup(anchor, size, onClose)
 	blocker.MouseButton1Click:Connect(function() self:ClosePopup() end)
 	blocker.MouseButton2Click:Connect(function() self:ClosePopup() end)
 	local h = size.Y.Offset
-	local gap = 4 -- space between trigger and list
+	local gap = 8 -- space between trigger and list
 	local function place()
 		local sc = math.max(self.Scale.Scale, .01)
-		local ap = (anchor.AbsolutePosition - ov.AbsolutePosition) / sc
-		local as = anchor.AbsoluteSize / sc
+		-- Buttons shrink (UIScale) while pressed; undo that so the popup matches the real button
+		local us = anchor:FindFirstChildOfClass("UIScale")
+		local k = math.max(us and us.Scale or 1, .01)
+		local rawSize = anchor.AbsoluteSize
+		local fullSize = rawSize / k
+		local fullPos = anchor.AbsolutePosition + (rawSize - fullSize) / 2
+		local ap = (fullPos - ov.AbsolutePosition) / sc
+		local as = fullSize / sc
 		local ovs = ov.AbsoluteSize / sc
 		-- Popup spans the full width of its trigger (wider popups right-align to it)
 		local w = math.max(as.X > 1 and as.X or 0, size.X.Offset, 60)
@@ -2147,7 +2142,7 @@ function Window:CreatePlayersTab()
 	local root = Frame({ Size = UDim2.fromScale(1, 1), Parent = tab.Page })
 	Pad(root, 18, 18, 18, 18)
 
-	local FOOT_H = 78
+	local FOOT_H = 86
 	-- list card ---------------------------------------------------------------
 	local card = Frame({ Size = UDim2.new(1, 0, 1, -(FOOT_H + 16)), BackgroundColor3 = Theme.Panel, ClipsDescendants = true, Parent = root })
 	Corner(card, 7)
@@ -2193,18 +2188,18 @@ function Window:CreatePlayersTab()
 	local foot = Frame({ AnchorPoint = Vector2.new(0, 1), Position = UDim2.fromScale(0, 1), Size = UDim2.new(1, 0, 0, FOOT_H), BackgroundColor3 = Theme.Panel, Parent = root })
 	Corner(foot, 7)
 	Stroke(foot, Theme.Stroke, 1, .78)
-	local avatar = Create("ImageLabel", { Position = UDim2.fromOffset(15, 15), Size = UDim2.fromOffset(48, 48), BackgroundColor3 = Theme.Element, BorderSizePixel = 0, Parent = foot })
+	local avatar = Create("ImageLabel", { Position = UDim2.fromOffset(15, 19), Size = UDim2.fromOffset(48, 48), BackgroundColor3 = Theme.Element, BorderSizePixel = 0, Parent = foot })
 	Corner(avatar, 6)
-	local fName = Label({ Text = "No player selected", FontFace = Fonts.Bold, TextSize = 13, Position = UDim2.fromOffset(75, 14), Size = UDim2.new(1, -75 - 280, 0, 16),
+	local fName = Label({ Text = "No player selected", FontFace = Fonts.Bold, TextSize = 13, Position = UDim2.fromOffset(75, 18), Size = UDim2.new(1, -75 - 280, 0, 16),
 		TextTruncate = Enum.TextTruncate.AtEnd, Parent = foot })
-	local fId = Label({ Text = "Click a player in the list", FontFace = Fonts.Medium, TextSize = 12, TextColor3 = Theme.SubText, Position = UDim2.fromOffset(75, 32), Size = UDim2.new(1, -75 - 280, 0, 16), Parent = foot })
-	local fAge = Label({ Text = "", FontFace = Fonts.Medium, TextSize = 12, TextColor3 = Theme.SubText, Position = UDim2.fromOffset(75, 49), Size = UDim2.new(1, -75 - 280, 0, 16), Parent = foot })
+	local fId = Label({ Text = "Click a player in the list", FontFace = Fonts.Medium, TextSize = 12, TextColor3 = Theme.SubText, Position = UDim2.fromOffset(75, 36), Size = UDim2.new(1, -75 - 280, 0, 16), Parent = foot })
+	local fAge = Label({ Text = "", FontFace = Fonts.Medium, TextSize = 12, TextColor3 = Theme.SubText, Position = UDim2.fromOffset(75, 53), Size = UDim2.new(1, -75 - 280, 0, 16), Parent = foot })
 
 	local statusBtns = {}
 	local btnRow = Frame({ AnchorPoint = Vector2.new(1, 0), Position = UDim2.new(1, -15, 0, 14), Size = UDim2.fromOffset(264, 26), Parent = foot })
 	List(btnRow, 6, Enum.FillDirection.Horizontal)
-	for i, name in ipairs({ "Neutral", "Enemy", "Friendly" }) do
-		local b = Button({ Size = UDim2.new(1 / 3, -4, 1, 0), BackgroundColor3 = Theme.Element, Text = "", LayoutOrder = i, Parent = btnRow })
+	local function styleBtn(b, name, order)
+		b.LayoutOrder = order
 		Corner(b, 5)
 		local st = Stroke(b, Theme.Stroke, 1)
 		local fillF = Frame({ Size = UDim2.fromScale(1, 1), BackgroundColor3 = WHITE, BackgroundTransparency = 1, Parent = b })
@@ -2213,17 +2208,86 @@ function Window:CreatePlayersTab()
 		Press(b)
 		b.MouseEnter:Connect(function() if b:GetAttribute("On") ~= true then Tween(b, { BackgroundColor3 = Color3.fromRGB(56, 62, 78) }, .12) end end)
 		b.MouseLeave:Connect(function() Tween(b, { BackgroundColor3 = Theme.Element }, .12) end)
-		statusBtns[name] = { Btn = b, Fill = fillF, Label = lbl, Stroke = st }
+		return { Btn = b, Fill = fillF, Label = lbl, Stroke = st }
 	end
+	for i, name in ipairs({ "Neutral", "Enemy", "Friendly" }) do
+		local b = Button({ Size = UDim2.new(1 / 3, -4, 1, 0), BackgroundColor3 = Theme.Element, Text = "", Parent = btnRow })
+		statusBtns[name] = styleBtn(b, name, i)
+	end
+	-- default actions: Teleport / Spectate
+	local actRow = Frame({ AnchorPoint = Vector2.new(1, 0), Position = UDim2.new(1, -15, 0, 46), Size = UDim2.fromOffset(264, 26), Parent = foot })
+	List(actRow, 6, Enum.FillDirection.Horizontal)
+	local tpBtn = styleBtn(Button({ Size = UDim2.new(.5, -3, 1, 0), BackgroundColor3 = Theme.Element, Text = "", Parent = actRow }), "Teleport", 1)
+	local specBtn = styleBtn(Button({ Size = UDim2.new(.5, -3, 1, 0), BackgroundColor3 = Theme.Element, Text = "", Parent = actRow }), "Spectate", 2)
 
 	-- state ------------------------------------------------------------------------
 	local selected, rows, filter = nil, {}, ""
+	local blush_paintSpectate
 	local function dispName(p) return p.DisplayName ~= p.Name and (p.Name .. " (" .. p.DisplayName .. ")") or p.Name end
 	local function statusColor(p)
 		local st = Blush:GetPlayerStatus(p)
 		if st == "LocalPlayer" then return LOCAL_COLOR end
 		return STATUS_COLORS[st] or Theme.SubText
 	end
+
+	-- teleport / spectate -------------------------------------------------------
+	local spectating, specConn = nil, nil
+	blush_paintSpectate = function()
+		local on = spectating ~= nil
+		local isLocal = selected == Players.LocalPlayer
+		local active = on and (selected == spectating or isLocal)
+		specBtn.Btn:SetAttribute("On", active)
+		specBtn.Label.Text = active and "Unspectate" or "Spectate"
+		Tween(specBtn.Fill, { BackgroundTransparency = active and 0 or 1 }, .18)
+		Tween(specBtn.Stroke, { Transparency = active and 1 or 0 }, .18)
+		Tween(specBtn.Label, { TextColor3 = active and WHITE or Theme.SubText, TextTransparency = (isLocal and not on) and .55 or 0 }, .18)
+	end
+	local function cameraSubjectFor(p)
+		local c = p and p.Character
+		return c and c:FindFirstChildOfClass("Humanoid")
+	end
+	local function stopSpectate(silent)
+		if specConn then specConn:Disconnect() specConn = nil end
+		spectating = nil
+		local cam = workspace.CurrentCamera
+		local hum = cameraSubjectFor(Players.LocalPlayer)
+		if cam and hum then cam.CameraSubject = hum end
+		blush_paintSpectate()
+		if not silent then Blush:Notify({ Title = "Spectate", Content = "Stopped spectating", Duration = 2 }) end
+	end
+	local function startSpectate(p)
+		local cam = workspace.CurrentCamera
+		local hum = cameraSubjectFor(p)
+		if not cam or not hum then
+			return Blush:Notify({ Title = "Spectate", Content = p.Name .. " has no character", Type = "Warning", Duration = 3 })
+		end
+		if specConn then specConn:Disconnect() specConn = nil end
+		spectating = p
+		cam.CameraSubject = hum
+		specConn = p.CharacterAdded:Connect(function(c)
+			local h = c:WaitForChild("Humanoid", 5)
+			if spectating == p and h then workspace.CurrentCamera.CameraSubject = h end
+		end)
+		blush_paintSpectate()
+		Blush:Notify({ Title = "Spectate", Content = "Spectating " .. p.Name, Duration = 2 })
+	end
+	specBtn.Btn.MouseButton1Click:Connect(function()
+		if spectating then stopSpectate() return end -- clicking while spectating stops
+		if selected and selected ~= Players.LocalPlayer then startSpectate(selected) end
+	end)
+	tpBtn.Btn.MouseButton1Click:Connect(function()
+		local p = selected
+		if not p or p == Players.LocalPlayer then return end
+		local myChar, theirChar = Players.LocalPlayer.Character, p.Character
+		local myRoot = myChar and myChar:FindFirstChild("HumanoidRootPart")
+		local theirRoot = theirChar and theirChar:FindFirstChild("HumanoidRootPart")
+		if not (myRoot and theirRoot) then
+			return Blush:Notify({ Title = "Teleport", Content = "Missing character or root part", Type = "Warning", Duration = 3 })
+		end
+		myRoot.CFrame = theirRoot.CFrame * CFrame.new(0, 0, 3)
+		Blush:Notify({ Title = "Teleport", Content = "Teleported to " .. p.Name, Duration = 2 })
+	end)
+	Connect(Players.LocalPlayer.CharacterAdded, function() if spectating then stopSpectate(true) end end)
 
 	local function paintFooter()
 		local p = selected
@@ -2232,8 +2296,10 @@ function Window:CreatePlayersTab()
 			fName.Text, fId.Text, fAge.Text = "No player selected", "Click a player in the list", ""
 			avatar.Image = ""
 			for _, d in pairs(statusBtns) do d.Btn.Visible = false end
+			actRow.Visible = false
 			return
 		end
+		actRow.Visible = true
 		fName.Text = dispName(p)
 		fId.Text = tostring(p.UserId)
 		fAge.Text = p.AccountAge .. " days old"
@@ -2249,6 +2315,9 @@ function Window:CreatePlayersTab()
 			d.Btn.Active = not isLocal
 			d.Btn.AutoButtonColor = false
 		end
+		tpBtn.Label.TextTransparency = isLocal and .55 or 0
+		tpBtn.Btn.Active = not isLocal
+		blush_paintSpectate()
 		task.spawn(function()
 			local ok, img = pcall(function() return Players:GetUserThumbnailAsync(p.UserId, Enum.ThumbnailType.HeadShot, Enum.ThumbnailSize.Size100x100) end)
 			if ok and selected == p then avatar.Image = img end
@@ -2329,22 +2398,33 @@ function Window:CreatePlayersTab()
 	for _, p in ipairs(Players:GetPlayers()) do watch(p) end
 	Connect(Players.PlayerAdded, function(p) watch(p) rebuild() end)
 	Connect(Players.PlayerRemoving, function(p)
+		if spectating == p then stopSpectate(true) end
 		if selected == p then selected = nil end
 		task.defer(rebuild)
 	end)
 	rebuild()
 
-	-- statuses are saved / loaded with configs
+	-- statuses are saved / loaded with configs: { [userId] = "Enemy" | "Friendly" }
 	local store = { Type = "PlayerStatus" }
-	function store:Save() return table.clone(Blush.PlayerStatus) end
+	function store:Save()
+		local out = {}
+		for uid, st in pairs(Blush.PlayerStatus) do
+			if st == "Enemy" or st == "Friendly" then out[tostring(uid)] = st end
+		end
+		return out
+	end
 	function store:Load(d)
-		Blush.PlayerStatus = {}
+		local new = {}
 		if type(d) == "table" then
 			for k, v in pairs(d) do
-				if v == "Enemy" or v == "Friendly" then Blush.PlayerStatus[tostring(k)] = v end
+				if v == "Enemy" or v == "Friendly" then new[tostring(k)] = v end
 			end
 		end
+		Blush.PlayerStatus = new
 		rebuild()
+		if Blush.OnPlayerStatusChanged then
+			for _, p in ipairs(Players:GetPlayers()) do task.spawn(Blush.OnPlayerStatusChanged, p, Blush:GetPlayerStatus(p)) end
+		end
 	end
 	function store:Reset() self:Load({}) end
 	store.Default = { {} }
