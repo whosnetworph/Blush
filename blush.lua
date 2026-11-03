@@ -1365,7 +1365,7 @@ function Container:AddDropdown(o)
 	Corner(box, 5)
 	local st = Stroke(box, Theme.Stroke, 1)
 	Press(box)
-	local txt = Label({ Position = UDim2.fromOffset(28, 0), Size = UDim2.new(1, -56, 1, 0), TextColor3 = Theme.SubText, TextXAlignment = Enum.TextXAlignment.Center, TextTruncate = Enum.TextTruncate.AtEnd, Parent = box })
+	local txt = Label({ Position = UDim2.fromOffset(11, 0), Size = UDim2.new(1, -36, 1, 0), TextColor3 = Theme.SubText, TextTruncate = Enum.TextTruncate.AtEnd, Parent = box })
 	local arrow = Label({
 		Text = o.Multi and "+" or "▼",
 		FontFace = Fonts.Medium,
@@ -1445,7 +1445,7 @@ function Container:AddDropdown(o)
 			h = searchH + count * itemH + padH
 		end
 		local sc = math.max(window.Scale.Scale, .01)
-		local popW = math.max(box.AbsoluteSize.X / sc, 80)
+		local popW = math.max(box.AbsoluteSize.X / sc - 20, 60)
 		local pop = window:OpenPopup(box, UDim2.fromOffset(popW, h), function()
 			D.IsOpen = false
 			Tween(arrow, { Rotation = 0 }, .2)
@@ -1462,7 +1462,6 @@ function Container:AddDropdown(o)
 				PlaceholderText = "Search...",
 				PlaceholderColor3 = Theme.SubText,
 				TextSize = 12,
-				TextXAlignment = Enum.TextXAlignment.Center,
 				Parent = pop,
 			})
 			Corner(sb, 4) Pad(sb, 0, 0, 9, 9)
@@ -1502,13 +1501,12 @@ function Container:AddDropdown(o)
 						Size = UDim2.new(1, 0, 0, itemH),
 						Text = tostring(v),
 						TextSize = 13,
-						TextXAlignment = Enum.TextXAlignment.Center,
 						BackgroundColor3 = Theme.Element,
 						BackgroundTransparency = 1,
 						LayoutOrder = i,
 						Parent = lst,
 					})
-					Corner(b, 4)
+					Corner(b, 4) Pad(b, 0, 0, 9, 0)
 					b.MouseEnter:Connect(function() Tween(b, { BackgroundTransparency = .4 }, .1) end)
 					b.MouseLeave:Connect(function() Tween(b, { BackgroundTransparency = 1 }, .1) end)
 					b.MouseButton1Click:Connect(function()
@@ -1660,14 +1658,15 @@ function TabMethods:AddSection(o)
 	local frame = Frame({ Size = UDim2.new(1, 0, 0, 0), AutomaticSize = Enum.AutomaticSize.Y, BackgroundColor3 = Theme.Panel, ZIndex = 2, Parent = wrap })
 	Corner(frame, 7)
 	Stroke(frame, Theme.Stroke, 1, .78)
-	-- Soft shadow made of stacked rounded layers, so it follows the section's
-	-- curved corners and fades out smoothly all the way round (no hard edges).
-	for i = 1, 9 do
+	-- Soft bottom-only shadow: stacked rounded layers tucked behind the section.
+	-- Each layer is a little deeper and narrower, so the shadow fades out in a curve
+	-- under the bottom edge and never shows on the sides or top.
+	for i = 1, 8 do
 		local layer = Frame({
-			Position = UDim2.new(0, -i, 0, -i + 3),
-			Size = UDim2.new(1, i * 2, 1, i * 2),
+			Position = UDim2.new(0, i * 2, 0, 0),
+			Size = UDim2.new(1, -i * 4, 1, i),
 			BackgroundColor3 = Color3.new(0, 0, 0),
-			BackgroundTransparency = .955,
+			BackgroundTransparency = .975,
 			ZIndex = 1,
 			Parent = wrap,
 		})
@@ -1724,7 +1723,7 @@ function TabMethods:Select()
 	self.Page.GroupTransparency = 1
 	self.Page.Position = UDim2.fromOffset(18 * dir, 0)
 	Tween(self.Page, { GroupTransparency = 0, Position = UDim2.fromOffset(0, 0) }, .4)
-	for _, s in ipairs(self.Sections) do s.Collapse:Refresh() end
+	for _, s in ipairs(self.Sections) do if s.Collapse then s.Collapse:Refresh() end end
 	if self._UpdateCanvas then task.defer(self._UpdateCanvas) end
 	task.defer(function() w:_MoveIndicator(self, prev == nil) end)
 	task.delay(.05, function() if w.ActiveTab == self then w:_MoveIndicator(self, true) end end)
@@ -1757,9 +1756,11 @@ function Window:OpenPopup(anchor, size, onClose)
 		local ap = (anchor.AbsolutePosition - ov.AbsolutePosition) / sc
 		local as = anchor.AbsoluteSize / sc
 		local ovs = ov.AbsoluteSize / sc
-		-- Always match trigger width and left-align (visually centered when same width)
-		local w = as.X > 1 and as.X or size.X.Offset
-		local x = ap.X
+		-- Popup is a little narrower than the trigger and centered horizontally under it
+		local inset = 10
+		local full = as.X > 1 and as.X or size.X.Offset
+		local w = math.max(full - inset * 2, 60)
+		local x = ap.X + (full - w) / 2
 		x = math.clamp(x, 2, math.max(2, ovs.X - w - 2))
 		local y = ap.Y + as.Y + gap
 		if y + h > ovs.Y - 2 then y = math.max(2, ap.Y - h - gap) end
@@ -2112,39 +2113,35 @@ function Blush:CreateWindow(cfg)
 	local header = Frame({ Size = UDim2.new(1, 0, 0, HEADER_H), BackgroundColor3 = WHITE, ClipsDescendants = true, Parent = main })
 	AccentGradient(header, 0)
 	W.Header = header
-	-- Flowing waves drifting across the header (built from short rotated segments)
-	local function BuildWave(amp, cycles, speed, thick, baseTrans, yOff, phase0)
-		local N, Wpx = 64, size.X
-		local segs = {}
+	-- One static, thick, translucent wave. It sweeps off the bottom and top of the
+	-- header and back on again; it never moves, only its transparency pulses.
+	local waveGroup = Make("CanvasGroup", {
+		BackgroundTransparency = 1,
+		BorderSizePixel = 0,
+		Size = UDim2.fromScale(1, 1),
+		GroupTransparency = .6,
+		Parent = header,
+	})
+	do
+		local N, Wpx = 110, size.X
+		local amp, cycles, phase, base = 30, .85, .35, 11
 		for i = 1, N do
-			local seg = Frame({
+			local x = (i - 1) / (N - 1)
+			local ph = x * math.pi * 2 * cycles + phase
+			local y = math.sin(ph) * amp
+			local slope = math.cos(ph) * amp * math.pi * 2 * cycles / Wpx
+			local thick = base * (.25 + .75 * math.sin(x * math.pi)) -- thicker in the middle
+			Frame({
 				AnchorPoint = Vector2.new(.5, .5),
-				Size = UDim2.fromOffset(Wpx / (N - 1) * 1.7, thick),
-				BackgroundColor3 = WHITE,
-				Parent = header,
+				Position = UDim2.new(x, 0, .5, y),
+				Size = UDim2.fromOffset(Wpx / (N - 1) * 1.6, thick),
+				BackgroundColor3 = Color3.fromRGB(255, 232, 255),
+				Rotation = math.deg(math.atan(slope)),
+				Parent = waveGroup,
 			})
-			Corner(seg, thick)
-			segs[i] = seg
 		end
-		local t = phase0
-		Connect(RunService.Heartbeat, function(dt)
-			if not header.Parent or not main.Visible then return end
-			t += dt * speed
-			for i, seg in ipairs(segs) do
-				local x = (i - 1) / (N - 1)
-				local ph = x * math.pi * 2 * cycles + t
-				local y = math.sin(ph) * amp
-				local slope = math.cos(ph) * amp * math.pi * 2 * cycles / Wpx
-				seg.Position = UDim2.new(x, 0, .5, y + yOff)
-				seg.Rotation = math.deg(math.atan(slope))
-				-- fade both ends so the wave melts into the header
-				local env = math.sin(x * math.pi) ^ .6
-				seg.BackgroundTransparency = 1 - (1 - baseTrans) * env
-			end
-		end)
 	end
-	BuildWave(7, 1.6, 1.3, 3, .35, 2, 0)
-	BuildWave(5, 2.2, -1.0, 2, .6, -1, 2)
+	TweenService:Create(waveGroup, TweenInfo.new(2.6, Sine, Enum.EasingDirection.InOut, -1, true), { GroupTransparency = .88 }):Play()
 	local rng = Random.new(7)
 	for i = 1, 18 do
 		local star = Label({
