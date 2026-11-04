@@ -1236,16 +1236,8 @@ function Container:AddSlider(o)
 	Corner(track, 2)
 	local fill = Frame({ Size = UDim2.fromScale(0, 1), BackgroundColor3 = WHITE, Parent = track })
 	Corner(fill, 2) AccentGradient(fill)
-	-- Soft glow (same style as the active tab icons): a faint light halo hugging the fill and knob
-	local SLIDER_GLOW = { Color = Color3.fromRGB(255, 228, 255), Thickness = 2, Transparency = .8 }
-	local function sliderGlow(p)
-		return Create("UIStroke", { Color = SLIDER_GLOW.Color, Thickness = SLIDER_GLOW.Thickness, Transparency = 1,
-			ApplyStrokeMode = Enum.ApplyStrokeMode.Border, Parent = p })
-	end
-	local fillGlow = sliderGlow(fill)
 	local knob = Frame({ AnchorPoint = Vector2.new(.5, .5), Position = UDim2.fromScale(0, .5), Size = UDim2.fromOffset(0, 0), BackgroundColor3 = WHITE, Parent = track })
 	Corner(knob, 6)
-	local knobGlow = sliderGlow(knob)
 	local hit = Button({ Position = UDim2.fromOffset(0, 18), Size = UDim2.new(1, 0, 0, 20), Parent = row })
 	self:_Add(S, row, o.Name, o)
 
@@ -1263,7 +1255,6 @@ function Container:AddSlider(o)
 		local pct = (v - self.Min) / math.max(self.Max - self.Min, 1e-9)
 		Tween(fill, { Size = UDim2.fromScale(pct, 1) }, .12, Sine)
 		Tween(knob, { Position = UDim2.fromScale(pct, .5) }, .12, Sine)
-		Tween(fillGlow, { Transparency = pct > .005 and SLIDER_GLOW.Transparency or 1 }, .12, Sine)
 		val.Text = fmt(v)
 		if self.Flag then Blush.Flags[self.Flag] = v end
 		if changed and not silent then self:_Fire(v) end
@@ -1272,11 +1263,7 @@ function Container:AddSlider(o)
 	function S:Load(v) self:SetValue(v) end
 
 	local hover, dragging = false, false
-	local function knobState()
-		local on = hover or dragging
-		Tween(knob, { Size = on and UDim2.fromOffset(12, 12) or UDim2.fromOffset(0, 0) }, .2, Back)
-		Tween(knobGlow, { Transparency = on and SLIDER_GLOW.Transparency or 1 }, .2)
-	end
+	local function knobState() Tween(knob, { Size = (hover or dragging) and UDim2.fromOffset(12, 12) or UDim2.fromOffset(0, 0) }, .2, Back) end
 	hit.MouseEnter:Connect(function() hover = true knobState() end)
 	hit.MouseLeave:Connect(function() hover = false knobState() end)
 	MakeDrag(hit, function(p)
