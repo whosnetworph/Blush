@@ -1694,8 +1694,64 @@ function Container:AddFold(o)
 	return fold
 end
 
+-- Builds one scrolling content pane (Top / Left / Right columns). Used by every tab and by sub tabs.
+local function MakePane(win, page)
+	local scroll = Make("ScrollingFrame", {
+		BackgroundTransparency = 1,
+		BorderSizePixel = 0,
+		Size = UDim2.fromScale(1, 1),
+		ScrollBarThickness = 3,
+		ScrollBarImageColor3 = Theme.Stroke,
+		ScrollBarImageTransparency = .35,
+		AutomaticCanvasSize = Enum.AutomaticSize.None,
+		CanvasSize = UDim2.new(),
+		ScrollingDirection = Enum.ScrollingDirection.Y,
+		ElasticBehavior = Enum.ElasticBehavior.Never,
+		Parent = page,
+	})
+	-- any page scroll (even fast wheel spins) closes an open dropdown / picker
+	scroll:GetPropertyChangedSignal("CanvasPosition"):Connect(function()
+		if win.Popup then win:ClosePopup() end
+	end)
+	local padTop, padBot, padSide = 16, 20, 16
+	local scrollList = List(scroll, 16)
+	Pad(scroll, padTop, padBot, padSide, padSide)
+	local top = Frame({ Size = UDim2.new(1, 0, 0, 0), AutomaticSize = Enum.AutomaticSize.Y, LayoutOrder = 1, Parent = scroll })
+	List(top, 16)
+	local cols = Frame({ Size = UDim2.new(1, 0, 0, 0), AutomaticSize = Enum.AutomaticSize.Y, LayoutOrder = 2, Parent = scroll })
+	List(cols, 16, Enum.FillDirection.Horizontal)
+	local left = Frame({ Size = UDim2.new(.5, -8, 0, 0), AutomaticSize = Enum.AutomaticSize.Y, LayoutOrder = 1, Parent = cols })
+	local right = Frame({ Size = UDim2.new(.5, -8, 0, 0), AutomaticSize = Enum.AutomaticSize.Y, LayoutOrder = 2, Parent = cols })
+	List(left, 16) List(right, 16)
+
+	-- Manual canvas size so content is never cut off and you can't scroll past the end
+	local function updateCanvas()
+		local h = scrollList.AbsoluteContentSize.Y + padTop + padBot
+		local view = scroll.AbsoluteWindowSize.Y
+		if view <= 0 then return end
+		-- Canvas height is content height; if content fits, keep canvas at viewport so no extra scroll
+		local canvasH = math.max(h, view)
+		scroll.CanvasSize = UDim2.new(0, 0, 0, canvasH)
+		-- Clamp position if we shrank (e.g. section collapsed)
+		local maxY = math.max(0, canvasH - view)
+		if scroll.CanvasPosition.Y > maxY then
+			scroll.CanvasPosition = Vector2.new(0, maxY)
+		end
+	end
+	scrollList:GetPropertyChangedSignal("AbsoluteContentSize"):Connect(updateCanvas)
+	scroll:GetPropertyChangedSignal("AbsoluteWindowSize"):Connect(updateCanvas)
+	task.defer(updateCanvas)
+	return scroll, top, left, right, updateCanvas
+end
+
+local SUB_H = 34 -- height of the optional sub tab bar
+
 local TabMethods = {}
 TabMethods.__index = TabMethods
+
+-- A sub tab is an extra page inside a main tab. It has the same AddSection API as a tab.
+local SubTabMethods = {}
+SubTabMethods.__index = SubTabMethods
 
 function TabMethods:AddSection(o)
 	o = o or {}
@@ -1750,7 +1806,123 @@ function TabMethods:AddSection(o)
 	List(inner, 9) Pad(inner, named and 12 or 4, 14, 14, 14)
 	S.Frame, S.Wrap, S.Inner = frame, wrap, inner
 	table.insert(self.Sections, S)
+	-- Sub tabs only matter once something has been put on one; otherwise this is a no-op.
+	local root = self.ParentTab or self
+	if root.SubTabs and #root.SubTabs > 0 then root:_RefreshSubTabs() end
 	return S
+end
+SubTabMethods.AddSection = TabMethods.AddSection
+
+-- Tab:AddSubTab("advanced")  or  Tab:AddSubTab({ Name = "advanced" })
+-- Returns a sub tab; call :AddSection({...}) on it exactly like on a tab.
+-- The sub tab bar only appears once at least one sub tab has a section on it. Sections added straight
+-- to the tab keep working and show up as the first page of the bar (named after the tab, or o.MainSubTab).
+function TabMethods:AddSubTab(o)
+	local root = self.ParentTab or self
+	if type(o) == "string" then o = { Name = o } end
+	o = o or {}
+	local title = o.Name or ("Page " .. (#root.SubTabs + 1))
+	local S = setmetatable({
+		Name = root.Name .. " / " .. title, -- used for config flag names, keeps them unique per sub tab
+		Title = title, Sections = {}, Window = root.Window, ParentTab = root, Page = root.Page,
+	}, SubTabMethods)
+	local scroll, top, left, right, upd = MakePane(root.Window, root.Page)
+	scroll.Visible = false
+	S.Scroll, S.Top, S.Left, S.Right, S._UpdateCanvas = scroll, top, left, right, upd
+	table.insert(root.SubTabs, S)
+	return S
+end
+SubTabMethods.AddSubTab = TabMethods.AddSubTab
+
+function SubTabMethods:Select()
+	local t = self.ParentTab
+	if t.Window.ActiveTab ~= t then t:Select() end
+	if t._Entries and table.find(t._Entries, self) then t:_SetEntry(self, true) end
+end
+
+function TabMethods:_MakeSubButton(e, label, order)
+	local b = Button({
+		Name = "SubTab", Size = UDim2.new(0, 0, 1, 0), AutomaticSize = Enum.AutomaticSize.X, Text = label,
+		TextColor3 = Theme.SubText, TextSize = 13, FontFace = Fonts.Semi, TextXAlignment = Enum.TextXAlignment.Center,
+		LayoutOrder = order, Parent = self.SubBar.List,
+	})
+	Pad(b, 0, 0, 26, 26)
+	local ul = Create("Frame", { AnchorPoint = Vector2.new(.5, 1), Position = UDim2.fromScale(.5, 1), Size = UDim2.new(0, 0, 0, 2),
+		BackgroundColor3 = WHITE, BorderSizePixel = 0, Parent = b })
+	Corner(ul, 1)
+	AccentGradient(ul, 0)
+	b.MouseEnter:Connect(function()
+		if (self.ActiveEntry or self) ~= e then Tween(b, { TextColor3 = Theme.Text }, .15) end
+	end)
+	b.MouseLeave:Connect(function()
+		if (self.ActiveEntry or self) ~= e then Tween(b, { TextColor3 = Theme.SubText }, .15) end
+	end)
+	b.MouseButton1Click:Connect(function() self:_SetEntry(e, true) end)
+	e.SubButton, e.SubUnderline = b, ul
+end
+
+function TabMethods:_RefreshSubTabs()
+	local subs = self.SubTabs
+	if not subs or #subs == 0 then return end
+	local any = false
+	for _, s in ipairs(subs) do if #s.Sections > 0 then any = true break end end
+	-- Nothing placed on a sub tab yet: leave the tab exactly as it was.
+	if not any then return end
+
+	if not self.SubBar then
+		local bar = Frame({ Name = "SubTabs", Size = UDim2.new(1, 0, 0, SUB_H), BackgroundColor3 = Theme.Footer,
+			BackgroundTransparency = .35, ClipsDescendants = true, ZIndex = 3, Parent = self.Page })
+		Frame({ AnchorPoint = Vector2.new(0, 1), Position = UDim2.fromScale(0, 1), Size = UDim2.new(1, 0, 0, 1),
+			BackgroundColor3 = Theme.Stroke, BackgroundTransparency = .3, Parent = bar })
+		local holder = Frame({ Size = UDim2.fromScale(1, 1), Parent = bar })
+		local l = List(holder, 0, Enum.FillDirection.Horizontal)
+		l.VerticalAlignment = Enum.VerticalAlignment.Center
+		Pad(holder, 0, 0, 12, 12)
+		self.SubBar = { Frame = bar, List = holder }
+		-- make room for the bar under it
+		local function place(e)
+			e.Scroll.Position = UDim2.fromOffset(0, SUB_H)
+			e.Scroll.Size = UDim2.new(1, 0, 1, -SUB_H)
+		end
+		place(self)
+		for _, s in ipairs(subs) do place(s) end
+	end
+
+	local list = {}
+	if #self.Sections > 0 then table.insert(list, self) end
+	for _, s in ipairs(subs) do if #s.Sections > 0 then table.insert(list, s) end end
+	for _, e in ipairs(list) do
+		if not e.SubButton then
+			if e == self then self:_MakeSubButton(e, self.MainTitle, 0)
+			else self:_MakeSubButton(e, e.Title, table.find(subs, e)) end
+		end
+	end
+	self._Entries = list
+
+	local cur = self.ActiveEntry or self
+	if not table.find(list, cur) then cur = list[1] end
+	self:_SetEntry(cur, false)
+end
+
+function TabMethods:_SetEntry(e, animate)
+	local list = self._Entries
+	if not list then return end
+	local prev = self.ActiveEntry or self
+	self.ActiveEntry = e
+	for _, x in ipairs(list) do
+		local on = x == e
+		Tween(x.SubButton, { TextColor3 = on and Theme.Text or Theme.SubText }, .2)
+		Tween(x.SubUnderline, { Size = UDim2.new(on and 1 or 0, 0, 0, 2) }, .3)
+	end
+	self.Scroll.Visible = e == self
+	for _, s in ipairs(self.SubTabs) do s.Scroll.Visible = s == e end
+	if animate and prev ~= e then
+		self.Window:ClosePopup()
+		local dir = (table.find(list, e) or 0) > (table.find(list, prev) or 0) and 1 or -1
+		e.Scroll.Position = UDim2.fromOffset(18 * dir, SUB_H)
+		Tween(e.Scroll, { Position = UDim2.fromOffset(0, SUB_H) }, .35)
+	end
+	if e._UpdateCanvas then task.defer(e._UpdateCanvas) end
 end
 
 function TabMethods:Select()
@@ -1772,7 +1944,11 @@ function TabMethods:Select()
 	self.Page.Position = UDim2.fromOffset(18 * dir, 0)
 	Tween(self.Page, { GroupTransparency = 0, Position = UDim2.fromOffset(0, 0) }, .4)
 	for _, s in ipairs(self.Sections) do if s.Collapse then s.Collapse:Refresh() end end
-	if self._UpdateCanvas then task.defer(self._UpdateCanvas) end
+	for _, sub in ipairs(self.SubTabs) do
+		for _, s in ipairs(sub.Sections) do if s.Collapse then s.Collapse:Refresh() end end
+	end
+	local act = self.ActiveEntry or self
+	if act._UpdateCanvas then task.defer(act._UpdateCanvas) end
 	task.defer(function() w:_MoveIndicator(self, prev == nil) end)
 	task.delay(.05, function() if w.ActiveTab == self then w:_MoveIndicator(self, true) end end)
 end
@@ -1880,9 +2056,9 @@ function Window:AutoLoad() Config:AutoLoad() end
 function Window:Search(q)
 	q = (q or ""):lower()
 	local first
-	for _, tab in ipairs(self.Tabs) do
-		local tabHas = false
-		for _, sec in ipairs(tab.Sections) do
+	local function scan(sections)
+		local any = false
+		for _, sec in ipairs(sections) do
 			local secHas = false
 			local titleMatch = q == "" or sec.Name:lower():find(q, 1, true) ~= nil
 			for _, el in ipairs(sec.Elements) do
@@ -1892,17 +2068,39 @@ function Window:Search(q)
 				if m then secHas = true end
 			end
 			sec.Wrap.Visible = q == "" or secHas
-			if secHas then tabHas = true end
+			if secHas then any = true end
+		end
+		return any
+	end
+	for _, tab in ipairs(self.Tabs) do
+		local tabHas = false
+		-- the tab's own sections plus every sub tab's sections
+		local entries = { tab }
+		for _, s in ipairs(tab.SubTabs) do table.insert(entries, s) end
+		for _, e in ipairs(entries) do
+			e.EntryMatch = scan(e.Sections)
+			if e.EntryMatch then tabHas = true end
 		end
 		tab.HasMatch = tabHas
 		if tabHas and not first then first = tab end
 	end
 	if q ~= "" and first and not (self.ActiveTab and self.ActiveTab.HasMatch) then first:Select() end
+	-- if the match lives on another sub tab of the open tab, jump to it
+	local at = self.ActiveTab
+	if q ~= "" and at and at._Entries then
+		local act = at.ActiveEntry or at
+		if not act.EntryMatch then
+			for _, e in ipairs(at._Entries) do
+				if e.EntryMatch then at:_SetEntry(e, true) break end
+			end
+		end
+	end
 end
 
 function Window:AddTab(o)
 	o = o or {}
-	local Tab = setmetatable({ Name = o.Name or "Tab", Sections = {}, Window = self, Index = #self.Tabs + 1 }, TabMethods)
+	local Tab = setmetatable({ Name = o.Name or "Tab", Sections = {}, SubTabs = {}, Window = self, Index = #self.Tabs + 1 }, TabMethods)
+	Tab.MainTitle = o.MainSubTab or Tab.Name -- label of the tab's own page in the sub tab bar (only shown if sub tabs are used)
 	local btn = Button({ Size = UDim2.fromOffset(32, 30), Parent = self.TabHolder, LayoutOrder = Tab.Index })
 	-- Molto material icons render as TextLabel font ligatures
 	local img = Label({
@@ -1972,54 +2170,11 @@ function Window:AddTab(o)
 	btn:GetPropertyChangedSignal("AbsoluteSize"):Connect(follow)
 
 	local page = Make("CanvasGroup", { BackgroundTransparency = 1, BorderSizePixel = 0, Size = UDim2.fromScale(1, 1), Visible = false, GroupTransparency = 1, Parent = self.Body })
-	local scroll = Make("ScrollingFrame", {
-		BackgroundTransparency = 1,
-		BorderSizePixel = 0,
-		Size = UDim2.fromScale(1, 1),
-		ScrollBarThickness = 3,
-		ScrollBarImageColor3 = Theme.Stroke,
-		ScrollBarImageTransparency = .35,
-		AutomaticCanvasSize = Enum.AutomaticSize.None,
-		CanvasSize = UDim2.new(),
-		ScrollingDirection = Enum.ScrollingDirection.Y,
-		ElasticBehavior = Enum.ElasticBehavior.Never,
-		Parent = page,
-	})
-	-- any page scroll (even fast wheel spins) closes an open dropdown / picker
-	scroll:GetPropertyChangedSignal("CanvasPosition"):Connect(function()
-		if self.Popup then self:ClosePopup() end
-	end)
-	local padTop, padBot, padSide = 16, 20, 16
-	local scrollList = List(scroll, 16)
-	Pad(scroll, padTop, padBot, padSide, padSide)
-	Tab.Top = Frame({ Size = UDim2.new(1, 0, 0, 0), AutomaticSize = Enum.AutomaticSize.Y, LayoutOrder = 1, Parent = scroll })
-	List(Tab.Top, 16)
-	local cols = Frame({ Size = UDim2.new(1, 0, 0, 0), AutomaticSize = Enum.AutomaticSize.Y, LayoutOrder = 2, Parent = scroll })
-	List(cols, 16, Enum.FillDirection.Horizontal)
-	Tab.Left = Frame({ Size = UDim2.new(.5, -8, 0, 0), AutomaticSize = Enum.AutomaticSize.Y, LayoutOrder = 1, Parent = cols })
-	Tab.Right = Frame({ Size = UDim2.new(.5, -8, 0, 0), AutomaticSize = Enum.AutomaticSize.Y, LayoutOrder = 2, Parent = cols })
-	List(Tab.Left, 16) List(Tab.Right, 16)
+	local scroll, top, left, right, updateCanvas = MakePane(self, page)
+	Tab.Top, Tab.Left, Tab.Right = top, left, right
 	Tab.Page = page
 	Tab.Scroll = scroll
-
-	-- Manual canvas size so content is never cut off and you can't scroll past the end
-	local function updateCanvas()
-		local h = scrollList.AbsoluteContentSize.Y + padTop + padBot
-		local view = scroll.AbsoluteWindowSize.Y
-		if view <= 0 then return end
-		-- Canvas height is content height; if content fits, keep canvas at viewport so no extra scroll
-		local canvasH = math.max(h, view)
-		scroll.CanvasSize = UDim2.new(0, 0, 0, canvasH)
-		-- Clamp position if we shrank (e.g. section collapsed)
-		local maxY = math.max(0, canvasH - view)
-		if scroll.CanvasPosition.Y > maxY then
-			scroll.CanvasPosition = Vector2.new(0, maxY)
-		end
-	end
-	scrollList:GetPropertyChangedSignal("AbsoluteContentSize"):Connect(updateCanvas)
-	scroll:GetPropertyChangedSignal("AbsoluteWindowSize"):Connect(updateCanvas)
 	Tab._UpdateCanvas = updateCanvas
-	task.defer(updateCanvas)
 
 	table.insert(self.Tabs, Tab)
 	if not o.Pinned and not self._HasUserTab then
