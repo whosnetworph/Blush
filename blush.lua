@@ -2048,6 +2048,7 @@ function Window:_MoveIndicator(tab, instant)
 end
 
 function Window:SetOpen(open)
+	if self._KeyHold then return end -- locked behind the key system
 	self.Open = open
 	Blush.MenuOpen = false
 	for _, w in ipairs(Blush.Windows) do if w.Open then Blush.MenuOpen = true end end
@@ -2737,16 +2738,367 @@ function Window:AddPlayerAction(o)
 	return t:AddAction(o)
 end
 
+-- ======================================================================================
+-- Key system
+-- ======================================================================================
+-- Add `KeySystem` to CreateWindow and the menu starts as a small login window (same banner,
+-- no tabs). The real menu stays hidden until your Callback accepts the key, then the small
+-- window grows into the full menu and its contents fade in.
+--
+--   local Window = Blush:CreateWindow({
+--       Name = "Blush",
+--       KeySystem = {
+--           Subtitle    = "Enter your key to continue",   -- optional
+--           Placeholder = "Enter your key...",            -- optional
+--           ButtonText  = "Login",                        -- optional
+--           MinLoadTime = .9,                             -- optional, seconds the spinner shows at least
+--           AutoLogin   = true,                           -- optional, submit a remembered key on load
+--           -- Your own check (your API, etc). May yield. `nonce` is a fresh random string per attempt:
+--           -- send it to your server and have the server echo/sign it so old responses can't be replayed.
+--           --   return true, data            -> key accepted; `data` (anything, e.g. a payload or token
+--           --                                   from your server) is handed to OnSuccess / OnKeyVerified / WaitForKey
+--           --   return false, "Key expired"  -> rejected, message shows in the footer
+--           Callback = function(key, nonce)
+--               return true, { token = "..." }
+--           end,
+--           -- or, for a simple list:  Keys = { "key-1", "key-2" },
+--           OnSuccess = function(key, data) end,          -- optional
+--           SuccessText = "Key accepted",                 -- optional footer text on success
+--       },
+--   })
+--   local key, data = Window:WaitForKey()   -- optional: yields until the key is accepted
+--   Window:OnKeyVerified(fn)                -- optional: fn(key, data) runs once the key is accepted
+--   Window.KeyVerified / Window.Key / Window.KeyData
+--
+-- This file only draws the UI and passes your Callback's result along; it never loads or runs scripts.
+-- (The key icon comes from the same external icon set the tabs use; KeySystem.Icon = false turns it off.)
+-- What you do with `data` (e.g. fetch and run your real script) is up to your own code.
+--
+-- "Remember me" stores the key in <Folder>/key.dat (base64, NOT encryption) and refills it next time.
+local KEY_SIZE = Vector2.new(330, 236)
+local KEY_RED, KEY_GREEN = Color3.fromRGB(240, 96, 112), Color3.fromRGB(110, 220, 150)
+
+local KeyStore = {}
+function KeyStore.Path(ks) return Config.Folder .. "/" .. (ks.FileName or "key.dat") end
+function KeyStore.Read(ks)
+	if not Config:Supported() then return nil end
+	local ok, raw = pcall(function() local p = KeyStore.Path(ks) return isfile(p) and readfile(p) or nil end)
+	if not ok or not raw then return nil end
+	local ok2, d = pcall(function() return HttpService:JSONDecode(raw) end)
+	if ok2 and type(d) == "table" and type(d.key) == "string" and d.key ~= "" then
+		local ok3, k = pcall(B64Decode, d.key)
+		if ok3 and type(k) == "string" and k ~= "" then return k end
+	end
+	return nil
+end
+function KeyStore.Write(ks, key)
+	if not Config:Supported() then return end
+	pcall(function()
+		if not isfolder(Config.Folder) then makefolder(Config.Folder) end
+		writefile(KeyStore.Path(ks), HttpService:JSONEncode({ key = B64Encode(key), saved = os.time() }))
+	end)
+end
+function KeyStore.Clear(ks)
+	if typeof(delfile) ~= "function" or not Config:Supported() then return end
+	pcall(function() local p = KeyStore.Path(ks) if isfile(p) then delfile(p) end end)
+end
+
+-- Fades a whole branch in (records every transparency, sets it to 1, tweens back to what it was)
+local function FadeIn(root, dur, delay)
+	local items = {}
+	local function grab(o)
+		local props = {}
+		if o:IsA("GuiObject") then
+			props.BackgroundTransparency = o.BackgroundTransparency
+			if o:IsA("TextLabel") or o:IsA("TextButton") or o:IsA("TextBox") then props.TextTransparency = o.TextTransparency end
+			if o:IsA("ImageLabel") or o:IsA("ImageButton") then props.ImageTransparency = o.ImageTransparency end
+		elseif o:IsA("UIStroke") then
+			props.Transparency = o.Transparency
+		end
+		if next(props) then table.insert(items, { o = o, props = props }) end
+	end
+	grab(root)
+	for _, d in ipairs(root:GetDescendants()) do grab(d) end
+	for _, it in ipairs(items) do for k in pairs(it.props) do it.o[k] = 1 end end
+	root.Visible = true
+	task.delay(delay or 0, function()
+		for _, it in ipairs(items) do
+			if it.o.Parent then Tween(it.o, it.props, dur or .4, Quint) end
+		end
+	end)
+end
+
+function Window:WaitForKey()
+	while not self.KeyVerified do
+		if not Blush.Gui then return nil end
+		task.wait(.1)
+	end
+	return self.Key, self.KeyData
+end
+function Window:OnKeyVerified(fn)
+	if type(fn) ~= "function" then return end
+	if self.KeyVerified then task.spawn(fn, self.Key, self.KeyData) return end
+	table.insert(self._KeyListeners, fn)
+end
+
+function Blush:_BuildKeySystem(W, ks, fullSize, finish)
+	local main, footer = W.Main, W.Footer
+	local keySize = ks.Size or KEY_SIZE
+	local bodyH = keySize.Y - HEADER_H - FOOTER_H
+	W.KeyVerified, W.Key, W.KeyData, W._KeyListeners = false, nil, nil, {}
+
+	-- the real menu stays hidden until the key is accepted
+	W.Body.Visible = false
+	W.TabHolder.Visible = false
+	W.SearchButton.Visible = false
+
+	local kb = Make("CanvasGroup", { Name = "KeyBody", BorderSizePixel = 0, BackgroundTransparency = 1,
+		Position = UDim2.fromOffset(0, HEADER_H), Size = UDim2.fromOffset(keySize.X, bodyH), Parent = main })
+
+	Label({ Text = ks.Subtitle or "Enter your key to continue", FontFace = Fonts.Medium, TextSize = 12, TextColor3 = Theme.SubText,
+		Position = UDim2.fromOffset(16, 14), Size = UDim2.new(1, -32, 0, 16), Parent = kb })
+
+	-- key input -----------------------------------------------------------------------
+	local field = Frame({ Position = UDim2.fromOffset(16, 38), Size = UDim2.new(1, -32, 0, 34), BackgroundColor3 = Theme.Element, Parent = kb })
+	Corner(field, 5)
+	local fstroke = Stroke(field, KEY_RED, 1, 1)
+	-- key icon: loaded from the same external icon set the tabs use.
+	-- ks.Icon can be an icon name ("key" by default), an asset id, or false to hide it.
+	local kimg
+	local iconName = ks.Icon
+	if iconName ~= false then
+		iconName = iconName or "key"
+		local raw = tostring(iconName)
+		if tonumber(raw) or raw:find("rbx", 1, true) == 1 then
+			kimg = Create("ImageLabel", { BackgroundTransparency = 1, BorderSizePixel = 0, ImageColor3 = Theme.SubText,
+				AnchorPoint = Vector2.new(0, .5), Position = UDim2.new(0, 9, .5, 0), Size = UDim2.fromOffset(18, 18), Parent = field })
+		else
+			kimg = Label({ AnchorPoint = Vector2.new(0, .5), Position = UDim2.new(0, 9, .5, 0), Size = UDim2.fromOffset(18, 18), TextSize = 16,
+				TextColor3 = Theme.SubText, TextXAlignment = Enum.TextXAlignment.Center, TextYAlignment = Enum.TextYAlignment.Center, Parent = field })
+		end
+	end
+	local function iconColor(c)
+		if not kimg then return end
+		if kimg:IsA("ImageLabel") then Tween(kimg, { ImageColor3 = c }, .15) else Tween(kimg, { TextColor3 = c }, .15) end
+	end
+
+	local box = Input({ Position = UDim2.fromOffset(kimg and 34 or 12, 0), Size = UDim2.new(1, kimg and -44 or -24, 1, 0), TextSize = 13, ClipsDescendants = true,
+		PlaceholderText = ks.Placeholder or "Enter your key...", PlaceholderColor3 = Theme.SubText, Parent = field })
+	if kimg then
+		local icon = kimg
+		task.spawn(function()
+			if not SetMoltoIcon(icon, iconName) then
+				icon:Destroy()
+				if kimg == icon then kimg = nil end
+				box.Position = UDim2.fromOffset(12, 0)
+				box.Size = UDim2.new(1, -24, 1, 0)
+			end
+		end)
+	end
+	box.Focused:Connect(function()
+		Tween(field, { BackgroundColor3 = Color3.fromRGB(54, 60, 76) }, .15)
+		iconColor(Theme.Text)
+	end)
+	box.FocusLost:Connect(function(enter)
+		Tween(field, { BackgroundColor3 = Theme.Element }, .15)
+		iconColor(Theme.SubText)
+		if enter then W._KeySubmit() end
+	end)
+
+	-- remember me (same look as a menu toggle) -------------------------------------------
+	local rrow = Frame({ Position = UDim2.fromOffset(16, 82), Size = UDim2.new(1, -32, 0, 24), Parent = kb })
+	local rbox = Frame({ AnchorPoint = Vector2.new(0, .5), Position = UDim2.fromScale(0, .5), Size = UDim2.fromOffset(18, 18), BackgroundColor3 = Theme.Element, Parent = rrow })
+	Corner(rbox, 5)
+	local rbscale = Create("UIScale", { Parent = rbox })
+	local rfill = Frame({ Size = UDim2.fromScale(1, 1), BackgroundColor3 = WHITE, BackgroundTransparency = 1, Parent = rbox })
+	Corner(rfill, 5)
+	AccentGradient(rfill, 45)
+	local rtick = Create("ImageLabel", { BackgroundTransparency = 1, BorderSizePixel = 0, Image = "rbxassetid://111862698467575", ImageColor3 = WHITE,
+		ImageTransparency = 1, AnchorPoint = Vector2.new(.5, .5), Position = UDim2.fromScale(.5, .5), Size = UDim2.fromOffset(12, 12), Parent = rbox })
+	local rtscale = Create("UIScale", { Scale = 0, Parent = rtick })
+	local rlbl = Label({ Text = ks.RememberText or "Remember me", Position = UDim2.fromOffset(26, 0), Size = UDim2.new(1, -26, 1, 0), TextColor3 = Theme.SubText, Parent = rrow })
+	local rhit = Button({ Size = UDim2.fromScale(1, 1), Parent = rrow })
+	local remember = false
+	local function setRemember(v)
+		remember = v and true or false
+		Tween(rfill, { BackgroundTransparency = remember and 0 or 1 }, .2)
+		Tween(rlbl, { TextColor3 = remember and Theme.Text or Theme.SubText }, .2)
+		Tween(rtick, { ImageTransparency = remember and 0 or 1 }, .15)
+		Tween(rtscale, { Scale = remember and 1 or 0 }, remember and .28 or .12, remember and Back or Quint)
+	end
+	rhit.MouseEnter:Connect(function() if not remember then Tween(rbox, { BackgroundColor3 = Color3.fromRGB(58, 65, 82) }, .15) end end)
+	local function rup() Tween(rbscale, { Scale = 1 }, .3, Back) end
+	rhit.MouseLeave:Connect(function() Tween(rbox, { BackgroundColor3 = Theme.Element }, .15) rup() end)
+	rhit.MouseButton1Down:Connect(function() Tween(rbscale, { Scale = .88 }, .08) end)
+	rhit.MouseButton1Up:Connect(rup)
+	rhit.MouseButton1Click:Connect(function() setRemember(not remember) end)
+
+	-- login button + spinner --------------------------------------------------------------
+	local login = Button({ Position = UDim2.fromOffset(16, 114), Size = UDim2.new(1, -32, 0, 32), BackgroundColor3 = WHITE, Parent = kb })
+	Corner(login, 5)
+	AccentGradient(login, 0)
+	Press(login)
+	login.MouseEnter:Connect(function() Tween(login, { BackgroundTransparency = .12 }, .15) end)
+	login.MouseLeave:Connect(function() Tween(login, { BackgroundTransparency = 0 }, .15) end)
+	local loginLbl = Label({ Text = ks.ButtonText or "Login", FontFace = Fonts.Bold, TextSize = 14, TextColor3 = WHITE,
+		TextXAlignment = Enum.TextXAlignment.Center, Size = UDim2.fromScale(1, 1), Parent = login })
+	local spin = Frame({ AnchorPoint = Vector2.new(.5, .5), Position = UDim2.fromScale(.5, .5), Size = UDim2.fromOffset(16, 16), Visible = false, Parent = login })
+	Corner(spin, 8)
+	local sstroke = Create("UIStroke", { Color = WHITE, Thickness = 2, Transparency = 1, ApplyStrokeMode = Enum.ApplyStrokeMode.Border, Parent = spin })
+	local sgrad = Create("UIGradient", { Transparency = NumberSequence.new({
+		NumberSequenceKeypoint.new(0, 0), NumberSequenceKeypoint.new(.45, .15), NumberSequenceKeypoint.new(.75, 1), NumberSequenceKeypoint.new(1, 1),
+	}), Parent = sstroke })
+	local spinTween
+
+	-- status text lives in the footer, right side ------------------------------------------------
+	local status = Label({ AnchorPoint = Vector2.new(1, .5), Position = UDim2.new(1, -16, .5, 0), Size = UDim2.fromOffset(160, 20), FontFace = Fonts.Medium,
+		TextSize = 12, TextColor3 = Theme.SubText, TextXAlignment = Enum.TextXAlignment.Right, TextTruncate = Enum.TextTruncate.AtEnd,
+		Text = "Waiting for key", Parent = footer })
+	local function setStatus(text, color)
+		status.Text = text
+		Tween(status, { TextColor3 = color or Theme.SubText }, .2)
+	end
+
+	local busy, done = false, false
+	local function setBusy(b)
+		busy = b
+		box.TextEditable = not b
+		if b then
+			if box:IsFocused() then box:ReleaseFocus() end
+			spin.Visible = true
+			Tween(loginLbl, { TextTransparency = 1 }, .15)
+			Tween(sstroke, { Transparency = 0 }, .2)
+			if spinTween then spinTween:Cancel() end
+			sgrad.Rotation = 0
+			spinTween = TweenService:Create(sgrad, TweenInfo.new(.75, Linear, Enum.EasingDirection.Out, -1), { Rotation = 360 })
+			spinTween:Play()
+		else
+			Tween(loginLbl, { TextTransparency = 0 }, .2)
+			Tween(sstroke, { Transparency = 1 }, .15).Completed:Connect(function()
+				if not busy then
+					spin.Visible = false
+					if spinTween then spinTween:Cancel() spinTween = nil end
+				end
+			end)
+		end
+	end
+
+	local function flashError()
+		fstroke.Color = KEY_RED
+		fstroke.Transparency = .1
+		Tween(fstroke, { Transparency = 1 }, 1.4, Quint)
+		task.spawn(function()
+			local base = field.Position
+			for _, dx in ipairs({ 6, -6, 4, -4, 2, 0 }) do
+				Tween(field, { Position = UDim2.new(base.X.Scale, base.X.Offset + dx, base.Y.Scale, base.Y.Offset) }, .045, Sine)
+				task.wait(.045)
+			end
+		end)
+	end
+
+	-- runs the developer's check -------------------------------------------------------------
+	-- returns ok, failMessage, data
+	local function runCheck(key, nonce)
+		local cb = ks.Callback or ks.Validate or ks.Check
+		if type(cb) == "function" then
+			local ok, res, extra = pcall(cb, key, nonce)
+			if not ok then return false, "Error while checking key" end
+			if res == true then return true, nil, extra end
+			if type(res) == "string" then return false, res end
+			if res then return true, nil, extra end -- any other truthy value counts as success
+			return false, type(extra) == "string" and extra or "Invalid key"
+		end
+		if type(ks.Keys) == "table" then
+			for _, k in ipairs(ks.Keys) do if k == key then return true end end
+			return false, "Invalid key"
+		end
+		return false, "No key check set up"
+	end
+
+	-- opens the real menu: the small window grows, then the contents fade in ---------------------
+	local function reveal()
+		local body, tabs, sbtn = W.Body, W.TabHolder, W.SearchButton
+		W._KeyHold = false
+		Tween(kb, { GroupTransparency = 1 }, .22, Quint)
+		Tween(status, { TextTransparency = 1 }, .22, Quint)
+		task.wait(.24)
+		if not main.Parent then return end
+		local cover = Frame({ Name = "KeyCover", Size = UDim2.fromScale(1, 1), BackgroundColor3 = Theme.Background, ZIndex = 50, Parent = body })
+		body.Visible = true
+		FadeIn(tabs, .5, .12)
+		FadeIn(sbtn, .5, .12)
+		Tween(main, { Size = UDim2.fromOffset(fullSize.X, fullSize.Y) }, .65, Quint)
+		task.delay(.12, function() if cover.Parent then Tween(cover, { BackgroundTransparency = 1 }, .55, Quint) end end)
+		task.wait(.72)
+		if not main.Parent then return end
+		cover:Destroy()
+		kb:Destroy()
+		status:Destroy()
+		main.Size = UDim2.fromOffset(fullSize.X, fullSize.Y)
+		W.KeyVerified = true
+		if W.ActiveTab then W:_MoveIndicator(W.ActiveTab, true) end
+		if type(ks.OnSuccess) == "function" then task.spawn(ks.OnSuccess, W.Key, W.KeyData) end
+		for _, fn in ipairs(W._KeyListeners) do task.spawn(fn, W.Key, W.KeyData) end
+		W._KeyListeners = {}
+		if finish then finish() end
+	end
+
+	local function submit()
+		if busy or done then return end
+		local key = box.Text:match("^%s*(.-)%s*$")
+		if key == "" then
+			setStatus("Enter a key first", KEY_RED)
+			flashError()
+			return
+		end
+		setBusy(true)
+		setStatus("Checking key...", Theme.Accent)
+		task.spawn(function()
+			local t0 = os.clock()
+			local ok, msg, data = runCheck(key, HttpService:GenerateGUID(false))
+			local left = (ks.MinLoadTime or .9) - (os.clock() - t0)
+			if left > 0 then task.wait(left) end
+			if not Blush.Gui or not main.Parent then return end
+			if ok then
+				done = true
+				W.Key, W.KeyData = key, data
+				if remember then KeyStore.Write(ks, key) else KeyStore.Clear(ks) end
+				setStatus(ks.SuccessText or "Key accepted", KEY_GREEN)
+				setBusy(false)
+				reveal()
+			else
+				setBusy(false)
+				setStatus(msg or "Invalid key", KEY_RED)
+				flashError()
+			end
+		end)
+	end
+	W._KeySubmit = submit
+	login.MouseButton1Click:Connect(submit)
+
+	-- remembered key
+	local saved = KeyStore.Read(ks)
+	if saved then
+		box.Text = saved
+		setRemember(true)
+		if ks.AutoLogin ~= false then task.delay(.7, submit) end
+	end
+end
+
 function Blush:CreateWindow(cfg)
 	cfg = cfg or {}
 	if cfg.Folder then Config.Folder = cfg.Folder end
 	if cfg.PerGame ~= nil then Config.PerGame = cfg.PerGame end
 	self:_Init()
 	local size = cfg.Size or Vector2.new(660, 580)
+	local ks = cfg.KeySystem
+	if ks == true then ks = {} end
+	if type(ks) ~= "table" or ks.Enabled == false then ks = nil end
+	local startSize = ks and (ks.Size or KEY_SIZE) or size
 	local W = setmetatable({ Tabs = {}, Open = false, Keybind = cfg.Keybind or Enum.KeyCode.LeftAlt, Name = cfg.Name or "Blush" }, Window)
 
 	local main = Make("CanvasGroup", { Name = "Main", BorderSizePixel = 0, BackgroundColor3 = Theme.Background, AnchorPoint = Vector2.new(.5, .5),
-		Position = UDim2.fromScale(.5, .5), Size = UDim2.fromOffset(size.X, size.Y), GroupTransparency = 1, Visible = false, Parent = self.Gui })
+		Position = UDim2.fromScale(.5, .5), Size = UDim2.fromOffset(startSize.X, startSize.Y), GroupTransparency = 1, Visible = false, Parent = self.Gui })
 	Corner(main, 9)
 	local scale = Create("UIScale", { Scale = .9, Parent = main })
 	W.Main, W.Scale = main, scale
@@ -2843,6 +3195,7 @@ function Blush:CreateWindow(cfg)
 	local footer = Frame({ AnchorPoint = Vector2.new(0, 1), Position = UDim2.fromScale(0, 1), Size = UDim2.new(1, 0, 0, FOOTER_H), BackgroundColor3 = Theme.Footer, Parent = main })
 	Frame({ Size = UDim2.new(1, 0, 0, 1), BackgroundColor3 = Theme.Stroke, BackgroundTransparency = .3, Parent = footer })
 	W.Overlay = Frame({ Size = UDim2.fromScale(1, 1), ZIndex = 20, Parent = main })
+	W.Footer = footer
 
 	local lp = Players.LocalPlayer
 	local avatar = Create("ImageLabel", { AnchorPoint = Vector2.new(0, .5), Position = UDim2.new(0, 16, .5, 0), Size = UDim2.fromOffset(26, 26),
@@ -2862,6 +3215,7 @@ function Blush:CreateWindow(cfg)
 	W.FooterUser = self.FooterUser
 
 	local sbtn = Button({ AnchorPoint = Vector2.new(1, .5), Position = UDim2.new(1, -10, .5, 0), Size = UDim2.fromOffset(30, 30), Parent = footer })
+	W.SearchButton = sbtn
 	local sicon = Label({
 		BackgroundTransparency = 1,
 		AnchorPoint = Vector2.new(.5, .5),
@@ -2920,11 +3274,22 @@ function Blush:CreateWindow(cfg)
 	end)
 
 	table.insert(self.Windows, W)
-	W:SetOpen(cfg.Open ~= false)
-	if cfg.AutoLoad ~= false then task.defer(function() Config:AutoLoad() end) end
-	if cfg.Watermark == false then self:SetWatermark(false) end
-	if cfg.LoadNotify ~= false then
-		self:Notify({ Title = "Loaded " .. W.Name, Content = "Press " .. KeyName(W.Keybind) .. " to open and close the menu.", Duration = 5 })
+	-- everything that should only happen once the menu is actually usable
+	local function finish()
+		if cfg.AutoLoad ~= false then task.defer(function() Config:AutoLoad() end) end
+		if cfg.Watermark == false then self:SetWatermark(false) elseif ks then self:SetWatermark(true) end
+		if cfg.LoadNotify ~= false then
+			self:Notify({ Title = "Loaded " .. W.Name, Content = "Press " .. KeyName(W.Keybind) .. " to open and close the menu.", Duration = 5 })
+		end
+	end
+	if ks then
+		self:SetWatermark(false)
+		self:_BuildKeySystem(W, ks, size, finish)
+		W:SetOpen(true)
+		W._KeyHold = true
+	else
+		W:SetOpen(cfg.Open ~= false)
+		finish()
 	end
 	return W
 end
