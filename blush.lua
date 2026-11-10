@@ -2851,6 +2851,7 @@ function Blush:_BuildKeySystem(W, ks, fullSize, finish)
 	W.Body.Visible = false
 	W.TabHolder.Visible = false
 	W.SearchButton.Visible = false
+	if W.FooterUser then W.FooterUser.Visible = false end -- username only shows on the real menu
 
 	local kb = Make("CanvasGroup", { Name = "KeyBody", BorderSizePixel = 0, BackgroundTransparency = 1,
 		Position = UDim2.fromOffset(0, HEADER_H), Size = UDim2.fromOffset(keySize.X, bodyH), Parent = main })
@@ -2953,7 +2954,7 @@ function Blush:_BuildKeySystem(W, ks, fullSize, finish)
 	-- status text lives in the footer, right side ------------------------------------------------
 	local status = Label({ AnchorPoint = Vector2.new(1, .5), Position = UDim2.new(1, -16, .5, 0), Size = UDim2.fromOffset(160, 20), FontFace = Fonts.Medium,
 		TextSize = 12, TextColor3 = Theme.SubText, TextXAlignment = Enum.TextXAlignment.Right, TextTruncate = Enum.TextTruncate.AtEnd,
-		Text = "Waiting for key", Parent = footer })
+		Text = "", Parent = footer })
 	local function setStatus(text, color)
 		status.Text = text
 		Tween(status, { TextColor3 = color or Theme.SubText }, .2)
@@ -3027,6 +3028,7 @@ function Blush:_BuildKeySystem(W, ks, fullSize, finish)
 		body.Visible = true
 		FadeIn(tabs, .5, .12)
 		FadeIn(sbtn, .5, .12)
+		if W.FooterUser then FadeIn(W.FooterUser, .5, .12) end
 		Tween(main, { Size = UDim2.fromOffset(fullSize.X, fullSize.Y) }, .65, Quint)
 		task.delay(.12, function() if cover.Parent then Tween(cover, { BackgroundTransparency = 1 }, .55, Quint) end end)
 		task.wait(.72)
