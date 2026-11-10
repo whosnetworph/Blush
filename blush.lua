@@ -2757,13 +2757,13 @@ end
 --           -- send it to your server and have the server echo/sign it so old responses can't be replayed.
 --           --   return true, data            -> key accepted; `data` (anything, e.g. a payload or token
 --           --                                   from your server) is handed to OnSuccess / OnKeyVerified / WaitForKey
---           --   return false, "Key expired"  -> rejected, message shows in the footer
+--           --   return false, "Key expired"  -> rejected, message shows under the button
 --           Callback = function(key, nonce)
 --               return true, { token = "..." }
 --           end,
 --           -- or, for a simple list:  Keys = { "key-1", "key-2" },
 --           OnSuccess = function(key, data) end,          -- optional
---           SuccessText = "Key accepted",                 -- optional footer text on success
+--           SuccessText = "Key accepted",                 -- optional text shown on success
 --       },
 --   })
 --   local key, data = Window:WaitForKey()   -- optional: yields until the key is accepted
@@ -2775,7 +2775,7 @@ end
 -- What you do with `data` (e.g. fetch and run your real script) is up to your own code.
 --
 -- "Remember me" stores the key in <Folder>/key.dat (base64, NOT encryption) and refills it next time.
-local KEY_SIZE = Vector2.new(330, 236)
+local KEY_SIZE = Vector2.new(330, 214)
 local KEY_RED, KEY_GREEN = Color3.fromRGB(240, 96, 112), Color3.fromRGB(110, 220, 150)
 
 local KeyStore = {}
@@ -2844,14 +2844,14 @@ end
 function Blush:_BuildKeySystem(W, ks, fullSize, finish)
 	local main, footer = W.Main, W.Footer
 	local keySize = ks.Size or KEY_SIZE
-	local bodyH = keySize.Y - HEADER_H - FOOTER_H
+	local bodyH = keySize.Y - HEADER_H
 	W.KeyVerified, W.Key, W.KeyData, W._KeyListeners = false, nil, nil, {}
 
 	-- the real menu stays hidden until the key is accepted
 	W.Body.Visible = false
 	W.TabHolder.Visible = false
 	W.SearchButton.Visible = false
-	if W.FooterUser then W.FooterUser.Visible = false end -- username only shows on the real menu
+	footer.Visible = false -- bottom bar (avatar, username, search) only shows on the real menu
 
 	local kb = Make("CanvasGroup", { Name = "KeyBody", BorderSizePixel = 0, BackgroundTransparency = 1,
 		Position = UDim2.fromOffset(0, HEADER_H), Size = UDim2.fromOffset(keySize.X, bodyH), Parent = main })
@@ -2951,10 +2951,10 @@ function Blush:_BuildKeySystem(W, ks, fullSize, finish)
 	}), Parent = sstroke })
 	local spinTween
 
-	-- status text lives in the footer, right side ------------------------------------------------
-	local status = Label({ AnchorPoint = Vector2.new(1, .5), Position = UDim2.new(1, -16, .5, 0), Size = UDim2.fromOffset(160, 20), FontFace = Fonts.Medium,
-		TextSize = 12, TextColor3 = Theme.SubText, TextXAlignment = Enum.TextXAlignment.Right, TextTruncate = Enum.TextTruncate.AtEnd,
-		Text = "", Parent = footer })
+	-- status text sits under the login button ------------------------------------------------
+	local status = Label({ Position = UDim2.fromOffset(16, 154), Size = UDim2.new(1, -32, 0, 16), FontFace = Fonts.Medium,
+		TextSize = 12, TextColor3 = Theme.SubText, TextXAlignment = Enum.TextXAlignment.Center, TextTruncate = Enum.TextTruncate.AtEnd,
+		Text = "", Parent = kb })
 	local function setStatus(text, color)
 		status.Text = text
 		Tween(status, { TextColor3 = color or Theme.SubText }, .2)
@@ -3027,8 +3027,8 @@ function Blush:_BuildKeySystem(W, ks, fullSize, finish)
 		local cover = Frame({ Name = "KeyCover", Size = UDim2.fromScale(1, 1), BackgroundColor3 = Theme.Background, ZIndex = 50, Parent = body })
 		body.Visible = true
 		FadeIn(tabs, .5, .12)
-		FadeIn(sbtn, .5, .12)
-		if W.FooterUser then FadeIn(W.FooterUser, .5, .12) end
+		FadeIn(footer, .5, .12) -- avatar, username and search icon fade in with it
+		sbtn.Visible = true
 		Tween(main, { Size = UDim2.fromOffset(fullSize.X, fullSize.Y) }, .65, Quint)
 		task.delay(.12, function() if cover.Parent then Tween(cover, { BackgroundTransparency = 1 }, .55, Quint) end end)
 		task.wait(.72)
