@@ -1386,8 +1386,22 @@ function Container:AddTextbox(o)
 	return Done(T)
 end
 
+-- A keybind/colorpicker added straight after a toggle sits on that toggle's row (right side)
+local function PrevToggle(self, o, needsFreeKeybind)
+	if o.Attach == false then return nil end
+	local els = self.Section and self.Section.Elements
+	local prev = els and els[#els]
+	if prev and prev.Type == "Toggle" and prev.AddKeybind and not (needsFreeKeybind and prev.Keybind) then return prev end
+	return nil
+end
+
 function Container:AddKeybind(o)
 	o = o or {}
+	local prev = PrevToggle(self, o, true)
+	if prev then
+		o.Mode = o.Mode or "Hold"
+		return prev:AddKeybind(o)
+	end
 	local row = Frame({ Size = UDim2.new(1, 0, 0, 24), Parent = self.Inner })
 	Label({ Text = o.Name or "Keybind", TextColor3 = Theme.SubText, Size = UDim2.new(1, 0, 1, 0), Parent = row })
 	local right = MakeRight(row)
@@ -1399,6 +1413,8 @@ end
 
 function Container:AddColorpicker(o)
 	o = o or {}
+	local prev = PrevToggle(self, o, false)
+	if prev then return prev:AddColorpicker(o) end
 	local row = Frame({ Size = UDim2.new(1, 0, 0, 24), Parent = self.Inner })
 	Label({ Text = o.Name or "Color", TextColor3 = Theme.SubText, Size = UDim2.new(1, 0, 1, 0), Parent = row })
 	local right = MakeRight(row)
